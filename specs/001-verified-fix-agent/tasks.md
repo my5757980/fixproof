@@ -45,7 +45,7 @@ target submission date is 2026-10-29. If Token Factory and Sandboxes access is s
 **Purpose**: Project initialization, repository hygiene, and the documentation scaffolding the
 constitution requires from day one.
 
-- [ ] T001 Create `pyproject.toml` for package `fixproof` (src layout, `requires-python = ">=3.12"`).
+- [X] T001 Create `pyproject.toml` for package `fixproof` (src layout, `requires-python = ">=3.12"`).
   - Runtime dependencies: `openai`, `contree-sdk`, `httpx`, `pydantic>=2`, `pydantic-settings`,
     `fastapi`, `uvicorn`, `typer`, `rich`.
   - Dev dependency group: `pytest`, `pytest-asyncio`, `ruff`, `mypy`.
@@ -58,14 +58,14 @@ constitution requires from day one.
     - pytest: `asyncio_mode = "auto"`, `testpaths = ["tests"]`, marker
       `live: requires Nebius credentials`.
   - Run `uv sync` to produce `uv.lock`.
-- [ ] T002 [P] Create the package and test skeleton in `src/fixproof/` and `tests/`:
+- [X] T002 [P] Create the package and test skeleton in `src/fixproof/` and `tests/`:
   - `src/fixproof/__init__.py` with `__version__ = "0.1.0"`;
   - empty `__init__.py` in `src/fixproof/{llm,sandbox,repo,tools,agent,bench,web}/` and
     `tests/{fakes,unit,contract,integration,live}/`;
   - `tests/conftest.py` with a `tmp_runs_dir` fixture.
-- [ ] T003 [P] Add the MIT license text to `LICENSE` at the repository root (copyright 2026
+- [X] T003 [P] Add the MIT license text to `LICENSE` at the repository root (copyright 2026
   FixProof contributors) so GitHub shows it at the top of the repository page.
-- [ ] T004 [P] Create `.env.example` listing every setting with a safe placeholder and a one-line
+- [X] T004 [P] Create `.env.example` listing every setting with a safe placeholder and a one-line
   comment:
   - inference: `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`;
   - models and sampling: `FIXPROOF_PLANNER_MODEL`, `FIXPROOF_WORKER_MODEL`,
@@ -79,13 +79,13 @@ constitution requires from day one.
     `FIXPROOF_SANDBOX_COST_PER_MIN_USD`, `FIXPROOF_DEMO_URL`.
 
   Use the defaults from plan.md "Technical Context" and quickstart.md §1.
-- [ ] T005 [P] Extend `.gitignore` with `.venv/`, `__pycache__/`, `*.egg-info/`, `.mypy_cache/`,
+- [X] T005 [P] Extend `.gitignore` with `.venv/`, `__pycache__/`, `*.egg-info/`, `.mypy_cache/`,
   `.ruff_cache/`, `.pytest_cache/`, `runs/`, and `bench/results/**/raw/`. Keep the existing `.env`,
   `.env.*`, `!.env.example`, and `.playwright-mcp/` rules.
-- [ ] T006 [P] Create the CI workflow `.github/workflows/ci.yml`: `ubuntu-latest`,
+- [X] T006 [P] Create the CI workflow `.github/workflows/ci.yml`: `ubuntu-latest`,
   `astral-sh/setup-uv`, then `uv sync --frozen`, `uv run ruff check .`,
   `uv run ruff format --check .`, `uv run mypy src`, and `uv run pytest -m "not live"`.
-- [ ] T007 [P] Create `docs/feedback.md`, the running Nebius and NVIDIA feedback log required by
+- [X] T007 [P] Create `docs/feedback.md`, the running Nebius and NVIDIA feedback log required by
   the constitution's "Hackathon Submission Requirements".
   - Sections: Token Factory inference, Token Factory Sandboxes, Nemotron models, onboarding and
     billing, documentation.
@@ -96,13 +96,16 @@ constitution requires from day one.
     - sandbox egress and resource limits are undocumented;
     - model ID casing differs between docs pages;
     - both regional and global base URLs are published.
-- [ ] T008 [P] Create the `README.md` skeleton with every section heading required by
+- [X] T008 [P] Create the `README.md` skeleton with every section heading required by
   Constitution VI, plus "Hackathon highlights (Nemotron roles, where Token Factory accelerated
   us, Sandboxes, other Nebius services)", "Benchmark results", "Judge demo", "Safety model",
   and "Data that leaves your machine". Bodies are filled in Phase 7 (T083).
 - [ ] T009 Create the public GitHub repository, preserve history, and record its URL in `README.md`
   (Constitution I: public repository, newly created project, version-control history as
   evidence):
+  - **deferred by the user on 2026-10-10**: build and commit locally first, then create and push
+    the public repository before submission (no later than T091). The local commit history,
+    including dates, is preserved when pushed. This task does not block Phase 2;
   - **requires the user's explicit approval** for creating the repository and for every push;
   - the repository name is the final product name, agreed with the user before this task (it is
     recorded later in `docs/devpost-submission.md`, T086);

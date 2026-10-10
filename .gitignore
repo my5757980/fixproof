@@ -5,3 +5,25 @@
 
 # Playwright MCP browser snapshots and screenshots (may contain personal data)
 .playwright-mcp/
+
+# Python and tooling
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+
+# Run outputs (traces, reports, patches) and raw benchmark artifacts
+runs/
+bench/results/**/raw/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
