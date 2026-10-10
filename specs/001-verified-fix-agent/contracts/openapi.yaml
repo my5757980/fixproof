@@ -1,0 +1,275 @@
+openapi: 3.1.0
+info:
+  title: FixProof demo API
+  version: 0.1.0
+  description: |
+    HTTP contract of the public judge demo (User Story 2). One FastAPI service serves this API and
+    the static UI. Live runs call Nebius Token Factory (NVIDIA Nemotron) and run code in Token
+    Factory Sandboxes. Replays are clearly labeled recordings of real runs (FR-018).
+    No endpoint applies patches or opens pull requests (FR-016).
+servers:
+  - url: /
+paths:
+  /api/health:
+    get:
+      summary: Service status, live-run availability and today's remaining budget
+      operationId: getHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /api/samples:
+    get:
+      summary: Curated one-click sample tasks on real public repositories (FR-019)
+      operationId: listSamples
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Sample" }
+  /api/runs:
+    post:
+      summary: Start a live run (queued if all live slots are busy)
+      operationId: createRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunCreate" }
+      responses:
+        "202":
+          description: Accepted; subscribe to the event stream
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunCreated" }
+        "400":
+          description: Invalid repository or task (bad URL, private repo, too large, issue from another repo)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Schema validation failed
+        "429":
+          description: Visitor or daily limit reached; response suggests a replay
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Live runs paused (budget exhausted or upstream unavailable); replay suggested
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/runs/{run_id}:
+    get:
+      summary: Current run state, label and report summary
+      operationId: getRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunView" }
+        "404":
+          description: Unknown run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/runs/{run_id}/events:
+    get:
+      summary: Server-Sent Events stream of trace events (past events first, then live)
+      description: |
+        `text/event-stream`. Each SSE message has `event: <TraceEvent.type>` and `data: <TraceEvent JSON>`
+        (see trace-events.md). The stream ends after the `run_finished` event. Clients may send
+        `Last-Event-ID` (the `seq`) to resume.
+      operationId: streamRunEvents
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "404":
+          description: Unknown run
+  /api/runs/{run_id}/stop:
+    post:
+      summary: Stop a run; partial results are kept (FR-012)
+      description: |
+        Only the visitor who started the run may stop it. The `control_token` returned by
+        `createRun` must be sent in the `X-Run-Token` header. The server stores only its SHA-256 hash.
+      operationId: stopRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: X-Run-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 64 }
+      responses:
+        "202":
+          description: Stop requested; the run ends within 10 seconds, even mid-command (SC-006)
+        "403":
+          description: Missing or wrong control token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown run
+        "409":
+          description: Run already finished
+  /api/runs/{run_id}/patch:
+    get:
+      summary: Download the run's patch as a unified diff (FR-015)
+      operationId: downloadPatch
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Patch file
+          content:
+            text/x-diff:
+              schema: { type: string }
+        "404":
+          description: Unknown run or no patch produced
+  /api/replays:
+    get:
+      summary: List recorded real runs available for labeled replay
+      operationId: listReplays
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ReplayEntry" }
+  /api/replays/{name}/events:
+    get:
+      summary: Replay a recorded run as an event stream; every event carries replay=true
+      operationId: streamReplay
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-z0-9-]{1,64}$" }
+        - name: speed
+          in: query
+          required: false
+          schema: { type: number, minimum: 1, maximum: 20, default: 4 }
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "404":
+          description: Unknown replay
+components:
+  parameters:
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^run-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$" }
+  schemas:
+    Task:
+      type: object
+      required: [kind, value]
+      properties:
+        kind: { type: string, enum: [issue, failing_test, description] }
+        value: { type: string, minLength: 1, maxLength: 4000 }
+    RunCreate:
+      type: object
+      description: Exactly one of (a) sample_id, or (b) repo_url + task. Mixed input returns 400 invalid_task.
+      oneOf:
+        - required: [sample_id]
+          not: { anyOf: [{ required: [repo_url] }, { required: [task] }] }
+        - required: [repo_url, task]
+          not: { required: [sample_id] }
+      properties:
+        sample_id: { type: string }
+        repo_url:
+          type: string
+          pattern: "^https://github\\.com/[\\w.-]+/[\\w.-]+(/tree/[\\w./-]+)?/?$"
+        task: { $ref: "#/components/schemas/Task" }
+        mode: { type: string, enum: [single, parallel], default: single }
+    RunCreated:
+      type: object
+      required: [run_id, status, events_url, control_token]
+      properties:
+        run_id: { type: string }
+        status: { type: string, enum: [queued, setting_up] }
+        queue_position: { type: integer, minimum: 0 }
+        control_token:
+          type: string
+          description: Secret returned once; required in X-Run-Token to stop this run. Keep it in the page session only.
+        events_url: { type: string }
+    RunView:
+      type: object
+      required: [run_id, status, replay]
+      properties:
+        run_id: { type: string }
+        status:
+          type: string
+          enum: [queued, setting_up, baseline, planning, reproducing, fixing, verifying, reporting, done]
+        label: { type: [string, "null"], enum: [verified, needs_review, not_verified, null] }
+        stop_reason:
+          type: [string, "null"]
+          enum: [completed, budget_steps, budget_time, budget_cost, user_stop, setup_failed,
+                 not_reproducible, service_unavailable, invalid_tool_calls, internal_error, null]
+        repo_url: { type: string }
+        task: { $ref: "#/components/schemas/Task" }
+        plan: { type: array, items: { type: string } }
+        summary: { type: [string, "null"] }
+        root_cause_md: { type: [string, "null"] }
+        changed_lines: { type: [integer, "null"] }
+        cost_usd: { type: number }
+        duration_s: { type: number }
+        models: { type: object, additionalProperties: { type: string } }
+        replay: { type: boolean }
+    Sample:
+      type: object
+      required: [id, title, repo_url, task, expected_minutes]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        repo_url: { type: string }
+        task: { $ref: "#/components/schemas/Task" }
+        expected_minutes: { type: integer }
+    ReplayEntry:
+      type: object
+      required: [name, title, label, recorded_at]
+      properties:
+        name: { type: string }
+        title: { type: string }
+        label: { type: string, enum: [verified, needs_review, not_verified] }
+        recorded_at: { type: string, format: date-time }
+    Health:
+      type: object
+      required: [status, live_runs_available, budget_remaining_usd, executor, models]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        live_runs_available: { type: boolean }
+        reason: { type: [string, "null"] }
+        budget_remaining_usd: { type: number }
+        active_runs: { type: integer }
+        queue_length: { type: integer }
+        executor: { type: string, enum: [contree, docker] }
+        models: { type: object, additionalProperties: { type: string } }
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [invalid_repo, private_repo, repo_too_large, invalid_task, visitor_limit,
+                 daily_limit, live_paused, not_found, already_finished, forbidden]
+        message: { type: string, description: Human-readable reason and how to proceed }
+        replay_suggestion: { type: [string, "null"], description: Replay name to offer instead }

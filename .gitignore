@@ -1,0 +1,7 @@
+# Secrets (constitution: Security & Safety Requirements)
+.env
+.env.*
+!.env.example
+
+# Playwright MCP browser snapshots and screenshots (may contain personal data)
+.playwright-mcp/
