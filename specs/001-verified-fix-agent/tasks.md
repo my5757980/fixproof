@@ -123,7 +123,7 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T010 [P] Implement every enum and entity from `specs/001-verified-fix-agent/data-model.md`
+- [X] T010 [P] Implement every enum and entity from `specs/001-verified-fix-agent/data-model.md`
   in `src/fixproof/models.py` as Pydantic v2 models:
   - `TaskKind`, `RunStatus`, `OutcomeLabel`, `StopReason`, `TestOutcome`, `RunMode`,
     `ModelRole`;
@@ -132,31 +132,32 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
     `Hypothesis`, `Attempt`, `Citation`, `Report`, `Run`;
   - `SampleTask`, `BenchmarkTask`;
   - `new_run_id()` producing `run-YYYYMMDD-HHMMSS-<6 hex>`.
-- [ ] T011 [P] Write `tests/unit/test_config.py`. It covers:
+- [X] T011 [P] Write `tests/unit/test_config.py`. It covers:
   - defaults match plan.md;
   - `is_dev_endpoint()` is False for `https://api.tokenfactory.nebius.com/v1/` and
     `https://api.tokenfactory.us-central1.nebius.com/v1/`, and True for any other host;
   - `secret_values()` returns only non-empty secrets;
   - a missing `NEBIUS_API_KEY` raises `ConfigError` whose message names the variable.
-- [ ] T012 Implement `src/fixproof/config.py` with a pydantic-settings `Settings` class covering
+- [X] T012 Implement `src/fixproof/config.py` with a pydantic-settings `Settings` class covering
   every variable in `.env.example`. It also provides:
   - a price table for the three Nemotron IDs from research.md R2;
   - `budget_cli()` and `budget_demo()` returning `Budget` defaults from plan.md;
   - `is_dev_endpoint()` and `secret_values()`;
   - `ConfigError`.
-- [ ] T013 [P] Write `tests/unit/test_events_trace.py`. It covers:
+- [X] T013 [P] Write `tests/unit/test_events_trace.py`. It covers:
   - `seq` strictly increasing per run;
   - a late subscriber receives history, then live events;
   - nested secret values and `api_key=...`-style strings are replaced with `[REDACTED]`;
   - the JSONL write/read round trip;
   - `replay()` yields events in `seq` order with `replay: true`.
-- [ ] T014 [P] Implement `src/fixproof/events.py`:
+- [X] T014 [P] Implement `src/fixproof/events.py`:
   - a `TraceEvent` factory (per-run monotonic `seq`, UTC `ts`, `attempt_id`, `type`, `data`,
     `replay`);
   - event-type constants exactly as listed in
     `specs/001-verified-fix-agent/contracts/trace-events.md`;
-  - an `EventBus` (async `publish`, `subscribe()` that yields history then live events, `close()`).
-- [ ] T015 Implement `src/fixproof/trace.py`:
+  - an `EventBus` (non-blocking `publish` usable from sync and async code, `subscribe()` that
+    yields history then live events, `close()`).
+- [X] T015 Implement `src/fixproof/trace.py`:
   - `Redactor`: replaces configured secret values plus the regex
     `(?i)(api[_-]?key|token|secret)\s*[:=]\s*\S+`, recursing into dicts, lists, and strings;
   - `TraceWriter`: an `EventBus` subscriber that writes `runs/<run_id>/trace.jsonl` and redacts
@@ -164,36 +165,36 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
   - `read_trace(path)`;
   - async `replay(path, speed)`, which preserves relative timing divided by `speed` and sets
     `replay=True`.
-- [ ] T016 [P] Write `tests/unit/test_budget.py`. It covers:
+- [X] T016 [P] Write `tests/unit/test_budget.py`. It covers:
   - each limit raises `BudgetExceeded` with the matching `StopReason` (`budget_steps`,
     `budget_time`, `budget_cost`);
   - per-model token and cost accounting;
   - `split(n)` divides the remaining budget for parallel branches.
-- [ ] T017 [P] Implement `src/fixproof/budget.py`: `BudgetTracker` (steps, monotonic wall
+- [X] T017 [P] Implement `src/fixproof/budget.py`: `BudgetTracker` (steps, monotonic wall
   clock, per-model tokens and cost, `check()`, `charge(model, prompt_tokens, completion_tokens)`,
   `split(n)`, `snapshot()` for `budget` events) and `BudgetExceeded(reason: StopReason)`.
-- [ ] T018 [P] Write `tests/unit/test_toolcall.py`. It covers:
+- [X] T018 [P] Write `tests/unit/test_toolcall.py`. It covers:
   - native OpenAI `tool_calls`;
   - `<tool_call>{json}</tool_call>` blocks in content;
   - fenced ```json blocks;
   - multiple calls in one message;
   - malformed JSON raises `ToolCallParseError` with the raw snippet;
   - plain text returns no calls.
-- [ ] T019 [P] Implement `src/fixproof/llm/toolcall.py`: a `ToolCall(id, name, args)` dataclass,
+- [X] T019 [P] Implement `src/fixproof/llm/toolcall.py`: a `ToolCall(id, name, args)` dataclass,
   `extract_tool_calls(message) -> list[ToolCall]` (native first, lenient fallback per research.md
   R3), and `ToolCallParseError`.
-- [ ] T020 [P] Implement `src/fixproof/llm/pricing.py`:
+- [X] T020 [P] Implement `src/fixproof/llm/pricing.py`:
   `cost_usd(model, prompt_tokens, completion_tokens)` from the config price table, with
   case-insensitive model matching. An unknown model raises an error naming the setting to add.
-- [ ] T021 [P] Write `tests/unit/test_llm_client.py`, using `httpx.MockTransport` injected through
-  `openai.AsyncOpenAI(http_client=...)`. It covers:
+- [X] T021 [P] Write `tests/unit/test_llm_client.py`, using `httpx2.MockTransport` (openai 3.x uses
+  `httpx2`) injected through `openai.AsyncOpenAI(http_client=...)`. It covers:
   - a tool-call response parses into `ModelReply`;
   - an HTTP 503 from the planner model falls back to the next model, and `fallback_from` is set;
   - usage tokens turn into cost;
   - `reasoning_content` is captured;
   - `list_models()` parses `/v1/models`;
   - each `model_call` event carries the effective `temperature`, `max_tokens`, and `top_p`.
-- [ ] T022 Implement `src/fixproof/llm/client.py`:
+- [X] T022 Implement `src/fixproof/llm/client.py`:
   - a `ModelClient` Protocol (`async complete(role, messages, tools=None) -> ModelReply`,
     `async list_models() -> list[str]`);
   - a `ModelReply` dataclass (content, tool_calls, reasoning, prompt_tokens, completion_tokens,
@@ -205,11 +206,11 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
       model-unavailable errors;
     - an `on_event` callback that emits `model_call` events (with the effective `temperature`,
       `max_tokens`, and `top_p`, per Constitution IV) and `reasoning` events.
-- [ ] T023 [P] Write `tests/unit/test_pytest_results.py` with JUnit XML fixtures in
+- [X] T023 [P] Write `tests/unit/test_pytest_results.py` with JUnit XML fixtures in
   `tests/unit/data/` (`junit_pass.xml`, `junit_mixed.xml` covering pass/fail/error/skip and
   parametrized IDs, `junit_classes.xml`). It also covers collection errors with no XML and the
   timeout flag.
-- [ ] T024 [P] Implement `src/fixproof/sandbox/pytest_results.py`:
+- [X] T024 [P] Implement `src/fixproof/sandbox/pytest_results.py`:
   - `build_pytest_command(selector: str | None) -> str`:
     - runs
       `PYTHONDONTWRITEBYTECODE=1 python -m pytest -rA -q -p no:cacheprovider --junitxml=/tmp/fixproof-junit.xml <selector>`;
@@ -219,7 +220,7 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
       `===FIXPROOF-OUT-END===`.
   - `parse_test_output(stdout, exit_code, timed_out, snapshot_id, selector) -> TestRun`: uses the
     standard library ElementTree and builds node IDs from file, classname, and name.
-- [ ] T025 Implement `src/fixproof/sandbox/executor.py`:
+- [X] T025 Implement `src/fixproof/sandbox/executor.py`:
   - an `Executor` Protocol:
     - `prepare_repo(tarball_path, base_image) -> Snapshot`;
     - `run(snapshot, command, *, timeout_s, mutate) -> tuple[CommandResult, Snapshot]`;
@@ -237,7 +238,7 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
       `git ls-files --others --exclude-standard`.
 
   Executors never accept credential environment variables.
-- [ ] T026 Implement `tests/fakes/fake_executor.py` with `FakeExecutor` (implements `Executor`):
+- [X] T026 Implement `tests/fakes/fake_executor.py` with `FakeExecutor` (implements `Executor`):
   - a copy-on-write in-memory filesystem per snapshot ID;
   - scripted command rules (regex → handler);
   - a simulated pytest runner whose results come from per-snapshot rules and are emitted in the
@@ -246,24 +247,24 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
   - simulated git diff, numstat, and untracked output computed from filesystem deltas against
     the baseline snapshot;
   - a counter of concurrently running operations, for the parallel-limit assertions.
-- [ ] T027 [P] Implement `tests/fakes/fake_model.py` with `FakeModelClient` (implements
+- [X] T027 [P] Implement `tests/fakes/fake_model.py` with `FakeModelClient` (implements
   `ModelClient`):
   - scripted per-role reply queues;
   - helpers `reply_tool(name, **args)`, `reply_text(text)`, and `reply_json(obj)`;
   - a record of every request (role, messages, tools) for assertions;
   - deterministic token usage;
   - an option to raise scripted 5xx errors.
-- [ ] T028 [P] Write `tests/unit/test_recipes.py`. It covers:
+- [X] T028 [P] Write `tests/unit/test_recipes.py`. It covers:
   - pyproject with a `test` extra gives `pip install -e ".[test]"`;
   - pyproject without extras gives `pip install -e .`;
   - `setup.py` only;
   - `requirements.txt` plus `requirements-dev.txt`;
   - the result always includes `pip install pytest`;
   - an empty repository gives the pytest install only.
-- [ ] T029 [P] Implement `src/fixproof/sandbox/recipes.py`:
+- [X] T029 [P] Implement `src/fixproof/sandbox/recipes.py`:
   `detect_install_commands(paths: list[str], read: Callable[[str], str]) -> list[str]` with
   quiet pip flags (`--quiet --disable-pip-version-check`), following research.md R4 decision 5.
-- [ ] T030 [P] Write `tests/unit/test_github.py` with `httpx.MockTransport`. It covers:
+- [X] T030 [P] Write `tests/unit/test_github.py` with `httpx.MockTransport`. It covers:
   - URL parsing, including `/tree/<ref>` and a trailing slash;
   - non-GitHub URLs give `invalid_repo`;
   - private repositories give `private_repo`;
@@ -272,7 +273,7 @@ protocol, parsers, GitHub intake, and test fakes. Every user story depends on th
   - the tarball redirect is followed with a size cap;
   - the 403 rate-limit message mentions `GITHUB_TOKEN`;
   - `get_tree` returns repository file paths capped at 2,000 entries.
-- [ ] T031 [P] Implement `src/fixproof/repo/github.py`:
+- [X] T031 [P] Implement `src/fixproof/repo/github.py`:
   - `parse_repo_url` and `parse_issue_url`;
   - `GitHubClient`, using async httpx with an optional `Authorization` header from the server-side
     `GITHUB_TOKEN`. Methods:
