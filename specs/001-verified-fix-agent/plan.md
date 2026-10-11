@@ -259,6 +259,10 @@ A long command or model call therefore never delays a stop beyond 10 seconds.
 | D10 | Bounded retries with exponential backoff (3 tries) for transient sandbox API errors, matching the model client (Constitution III) | R4 |
 | D11 | Demo stop requires a per-run control token (only its hash is stored); the daily budget includes estimated sandbox cost and lives in `FIXPROOF_STATE_DIR` | R11 |
 
+These decisions are recorded as ADRs in `history/adr/`: D1 → ADR-0001, D2 → ADR-0002,
+D3/D4/D10 → ADR-0003, D5 → ADR-0004, D9 → ADR-0005, D6 → ADR-0006, D7 → ADR-0007, and
+D8/D11 → ADR-0008.
+
 ## Delivery Milestones (deadline 2026-10-30 10:00 PDT; feature freeze 2026-10-23)
 
 | Milestone | Dates | Exit criteria |

@@ -88,23 +88,24 @@ Derived properties: `passed_ids`, `failed_ids` (failed ∪ error), and `counts`.
 | Field | Type | Rules |
 |-------|------|-------|
 | `baseline` | `TestRun` | Full suite before any change (FR-003) |
-| `baseline_flaky` | `list[str]` | Baseline failures that passed on one re-run; excluded from judgment |
+| `baseline_flaky` | `list[str]` | Tests that passed on one re-run (baseline failures, or apparent regressions after the fix); excluded from the regression check only |
 | `repro_test_id` | `str \| None` | Existing failing test or the created reproduction test |
 | `repro_created` | `bool` | `True` if the agent wrote the test (FR-004) |
 | `repro_before` | `TestRun \| None` | Must show `repro_test_id` failing |
 | `repro_after` | `list[TestRun]` | Exactly 3 consecutive runs for `verified` |
 | `regression` | `TestRun \| None` | Full suite after the fix |
-| `modified_test_files` | `list[str]` | Existing test files modified or deleted (FR-008) |
+| `modified_test_files` | `list[str]` | Existing test files modified or deleted (FR-008), plus reproduction tests changed after the reproduction was confirmed |
 
-**Labeling rule** (in `verify.py`):
+**Labeling rule** (in `verify.py`; rationale in ADR-0004):
 
 - `verified` requires all of the following:
   - `repro_after` has 3 runs and all pass `repro_test_id`;
   - `baseline.passed_ids − baseline_flaky ⊆ regression.passed_ids`;
   - `modified_test_files == []`;
-  - the baseline has at least one test besides the reproduction test.
+  - the baseline has at least one passing test besides the reproduction test (flaky tests still
+    count here; they are excluded only from the regression check).
 - `needs_review` applies when the test conditions hold but `modified_test_files` is not empty,
-  or the repository had no prior tests.
+  or the repository had no prior passing tests.
 - Everything else is `not_verified`.
 
 ### FileChange / Patch
