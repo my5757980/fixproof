@@ -23,7 +23,7 @@ from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
 from fixproof.models import Snapshot, TestCaseResult, TestOutcome
-from fixproof.sandbox.executor import BASELINE_TAG, CommandResult, DirEntry
+from fixproof.sandbox.executor import BASELINE_TAG, PATCH_MARKERS, CommandResult, DirEntry
 from fixproof.sandbox.pytest_results import JUNIT_BEGIN, JUNIT_END, OUT_BEGIN, OUT_END
 
 Files = dict[str, bytes]
@@ -175,6 +175,10 @@ class FakeExecutor:
         if command.startswith("git init"):
             self.baseline = dict(fs)
             return CommandResult(stdout="")
+        if PATCH_MARKERS[0] in command:
+            diff, numstat, names = self._unified_diff(fs), self._numstat(fs), self._name_status(fs)
+            sections = zip(PATCH_MARKERS, (diff, numstat, names), strict=True)
+            return CommandResult(stdout="".join(f"{m}\n{body}\n" for m, body in sections))
         if f"--numstat {BASELINE_TAG}" in command:
             return CommandResult(stdout=self._numstat(fs))
         if f"--name-status --no-renames {BASELINE_TAG}" in command:

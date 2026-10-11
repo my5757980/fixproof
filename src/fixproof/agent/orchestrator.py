@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, TypeVar
 
 from fixproof.agent import prompts
+from fixproof.agent.hypotheses import BranchSetup, HypothesisRunner
 from fixproof.agent.prompts import Plan
 from fixproof.agent.report import (
     build_report,
@@ -44,6 +45,8 @@ from fixproof.models import (
     Budget,
     Citation,
     Evidence,
+    Hypothesis,
+    HypothesisRow,
     ModelRole,
     OutcomeLabel,
     Patch,
@@ -130,6 +133,9 @@ class RunRequest:
     ref: str | None = None
     origin: Literal["cli", "web", "bench"] = "cli"
     base_image: str | None = None  # overrides FIXPROOF_BASE_IMAGE (e.g. a task's Python version)
+    mode: RunMode = RunMode.SINGLE
+    max_parallel: int = 3  # parallel mode: branches at once (1-3)
+    exhaustive: bool = False  # parallel mode: keep running branches after the first verified one
 
 
 @dataclass(frozen=True)
@@ -187,6 +193,7 @@ class Orchestrator:
         self._runs_dir = runs_dir
         self._limits = budget
         self._budget = BudgetTracker(budget, clock=clock)
+        self._model = model
         self._gateway = ModelGateway(model, self._budget, bus, settings.sampling())
         self._tests = TestRunner(executor, timeout_s=budget.command_timeout_s, bus=bus)
         self._registry = build_registry(web_search=web_search is not None)
@@ -216,6 +223,11 @@ class Orchestrator:
         self._best_finish: FinishArgs | None = None
         self._last_finish: FinishArgs | None = None
         self._report_published = False
+        self._mode = RunMode.SINGLE
+        self._max_parallel = 3
+        self._exhaustive = False
+        self._hypotheses: list[Hypothesis] | None = None
+        self._hypothesis_rows: list[HypothesisRow] = []
 
     # -- public API ----------------------------------------------------------------------
 
@@ -251,7 +263,7 @@ class Orchestrator:
                 ref=request.ref or location.ref,
             ),
             task=request.task,
-            mode=RunMode.SINGLE,
+            mode=request.mode,
             budget=self._limits,
             origin=request.origin,
             started_at=utc_now(),
@@ -259,6 +271,9 @@ class Orchestrator:
         self._run = run
         self._budget.restart_clock()  # time spent waiting in a demo queue does not count
         self._base_image = request.base_image or self._settings.base_image
+        self._mode = request.mode
+        self._max_parallel = max(1, min(request.max_parallel, self._limits.max_parallel))
+        self._exhaustive = request.exhaustive
         redactor = Redactor(self._settings.secret_values())
         writer = TraceWriter.for_run(self._runs_dir, self.run_id, redactor=redactor).attach(
             self.bus
@@ -328,7 +343,7 @@ class Orchestrator:
                 "repo_url": request.repo_url,
                 "ref": request.ref,
                 "task": {"kind": task.kind.value, "value": task.value},
-                "mode": RunMode.SINGLE.value,
+                "mode": request.mode.value,
                 "budget": self._limits.model_dump(),
                 "models": self._settings.models_by_role(),
                 "sampling": self._settings.sampling(),
@@ -495,6 +510,8 @@ class Orchestrator:
             self._error("plan", "The refined plan was not usable; keeping the initial plan.")
         self._plan = plan or initial
         self._publish_plan(self._plan, "refined")
+        if self._mode is RunMode.PARALLEL:
+            self._hypotheses = await self._make_hypotheses()
 
     async def _reproducing_phase(self) -> None:
         run = self._require(self._run)
@@ -602,7 +619,84 @@ class Orchestrator:
             reason = f"every test in {files} passed, so it does not reproduce the bug."
         return _ReproductionCheck(None, reason)
 
+    async def _make_hypotheses(self) -> list[Hypothesis] | None:
+        """Ask the planner for competing hypotheses, repairing one unusable answer."""
+        run = self._require(self._run)
+        limit = self._max_parallel
+        messages = prompts.hypotheses_messages(
+            run.task, self._paths, self._evidence, self._plan, limit
+        )
+        reply = await self._gateway.complete(ModelRole.PLANNER, messages)
+        hypotheses = prompts.parse_hypotheses(reply.content, limit)
+        if hypotheses is None:
+            repair = [
+                *messages,
+                {"role": "assistant", "content": reply.content or ""},
+                {"role": "user", "content": prompts.hypotheses_repair_message(limit)},
+            ]
+            reply = await self._gateway.complete(ModelRole.PLANNER, repair)
+            hypotheses = prompts.parse_hypotheses(reply.content, limit)
+        if hypotheses is None:
+            self._error(
+                "plan", "The planner gave no usable hypotheses; continuing with a single attempt."
+            )
+            return None
+        self.bus.publish(
+            EventType.HYPOTHESES,
+            {
+                "items": [
+                    {
+                        "id": h.id,
+                        "statement": h.statement,
+                        "suspected_files": list(h.suspected_files),
+                    }
+                    for h in hypotheses
+                ]
+            },
+        )
+        return hypotheses
+
+    async def _parallel_fixing_phase(self, hypotheses: list[Hypothesis]) -> None:
+        """Test every hypothesis in its own sandbox branch and keep the smallest verified fix."""
+        run = self._require(self._run)
+        self._transition(RunStatus.FIXING)
+        setup = BranchSetup(
+            model=self._model,
+            sampling=self._settings.sampling(),
+            registry=self._registry,
+            executor=self._executor,
+            tests=self._tests,
+            bus=self.bus,
+            limits=self._limits,
+            task=run.task,
+            plan=self._plan,
+            paths=self._paths,
+            repro=self._require(self._repro),
+            evidence=self._require(self._evidence),
+            repro_files=self._repro_files,
+            web_search=self._web_search,
+        )
+        runner = HypothesisRunner(
+            setup, budget=self._budget, max_parallel=self._max_parallel, exhaustive=self._exhaustive
+        )
+        outcome = await runner.run(hypotheses)
+        run.attempts.extend(branch.attempt for branch in outcome.branches)
+        self._hypothesis_rows = outcome.rows
+        for branch in outcome.branches:
+            self._gateway.models_used.update(branch.models_used)
+        winner = outcome.winner
+        if winner is not None and winner.verification is not None:
+            self._best, self._best_finish = winner.verification, winner.finish
+            self._last_finish = winner.finish
+        if outcome.service_error is not None:
+            raise outcome.service_error
+        if all(b.attempt.status is AttemptStatus.BUDGET_EXHAUSTED for b in outcome.branches):
+            self._budget.check()  # report the run-level limit that stopped every branch
+
     async def _fixing_phase(self) -> None:
+        if self._hypotheses:
+            await self._parallel_fixing_phase(self._hypotheses)
+            return
         run = self._require(self._run)
         repro = self._require(self._repro)
         evidence = self._require(self._evidence)
@@ -782,6 +876,7 @@ class Orchestrator:
             tokens=self._budget.snapshot()["tokens"],
             duration_s=self._budget.seconds_elapsed,
             models={**self._settings.models_by_role(), **self._gateway.models_used},
+            hypotheses=self._hypothesis_rows,
         )
         self._save_report(run, report)
 

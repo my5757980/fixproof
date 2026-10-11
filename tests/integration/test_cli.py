@@ -19,6 +19,7 @@ from tests.fakes.calc_repo import CALC_FILES, ISSUE_URL, REPO_URL, calc_behavior
 from tests.fakes.fake_executor import FakeExecutor
 from tests.fakes.fake_github import FakeGitHub
 from tests.fakes.fake_model import FakeModelClient, reply_bad_args, reply_json, reply_text
+from tests.fakes.parallel import BranchScripts, parallel_planner
 from tests.fakes.scenario import happy_planner, happy_worker, plan_reply
 from tests.fakes.settings import make_settings
 
@@ -226,3 +227,34 @@ def test_serve_starts_the_web_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     result = invoke("serve", "--host", "127.0.0.1", "--port", "8123")
     assert result.exit_code == 0, result.output
     assert calls == [{"host": "127.0.0.1", "port": 8123}]
+
+
+def test_fix_in_parallel_mode_reports_the_hypotheses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    model = FakeModelClient()
+    model.script(ModelRole.PLANNER, *parallel_planner())
+    model.script(ModelRole.WORKER, *BranchScripts().worker_queue())
+    executor = FakeExecutor()
+    executor.test_behavior = calc_behavior
+    settings = make_settings()
+    monkeypatch.setattr(
+        cli,
+        "factories",
+        Factories(
+            settings=lambda: settings,
+            model=lambda s: model,
+            executor=lambda s, on_event: executor,
+            repo_source=lambda s: FakeGitHub(CALC_FILES),
+        ),
+    )
+    result = invoke(*FIX, "--parallel", "3", "--exhaustive", "--out", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    [report_md] = list(tmp_path.glob("*/report.md"))
+    assert "## Hypotheses" in report_md.read_text(encoding="utf-8")
+
+
+def test_parallel_accepts_only_one_to_three(tmp_path: Path) -> None:
+    for value in ("0", "4"):
+        result = invoke(*FIX, "--parallel", value, "--out", str(tmp_path))
+        assert result.exit_code == 2, value

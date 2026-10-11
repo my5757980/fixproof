@@ -23,7 +23,7 @@ from fixproof.agent.orchestrator import Orchestrator, RunRequest, new_event_bus
 from fixproof.config import ConfigError, Settings, load_settings
 from fixproof.events import EventType, TraceEvent
 from fixproof.llm.client import ModelClient
-from fixproof.models import Budget, OutcomeLabel, Run, StopReason, Task, TaskKind
+from fixproof.models import Budget, OutcomeLabel, Run, RunMode, StopReason, Task, TaskKind
 from fixproof.repo.github import GitHubError, RepoSource, parse_issue_url, parse_repo_url
 from fixproof.sandbox.executor import Executor
 from fixproof.sandbox.factory import assert_demo_safe, make_executor
@@ -221,6 +221,19 @@ def fix(
     max_cost: Annotated[
         float | None, typer.Option("--max-cost", help="Cost budget in USD (default 1.00).")
     ] = None,
+    parallel: Annotated[
+        int,
+        typer.Option(
+            "--parallel",
+            min=1,
+            max=3,
+            help="Hypotheses to try at once in separate sandbox branches (1 = single path).",
+        ),
+    ] = 1,
+    exhaustive: Annotated[
+        bool,
+        typer.Option("--exhaustive", help="With --parallel, finish every branch, then pick."),
+    ] = False,
     out: Annotated[Path, typer.Option("--out", help="Directory for run folders.")] = Path("runs"),
     verbose: Annotated[
         bool,
@@ -245,7 +258,14 @@ def fix(
         console.print(
             "DEV ONLY: NEBIUS_BASE_URL does not point at Nebius Token Factory.", markup=False
         )
-    request = RunRequest(repo_url=repo, task=task, ref=ref)
+    request = RunRequest(
+        repo_url=repo,
+        task=task,
+        ref=ref,
+        mode=RunMode.PARALLEL if parallel > 1 else RunMode.SINGLE,
+        max_parallel=parallel,
+        exhaustive=exhaustive,
+    )
     try:
         run = asyncio.run(_run_fix(settings, budget, request, out, console, verbose))
     except ConfigError as exc:

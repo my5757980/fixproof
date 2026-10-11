@@ -675,7 +675,7 @@ verified winner with the fewest changed lines, and no more than 3 concurrent bra
 
 ### Tests for User Story 3 (REQUIRED for agent-loop changes) ⚠️
 
-- [ ] T066 [P] [US3] Write the integration tests `tests/integration/test_parallel_hypotheses.py`
+- [X] T066 [P] [US3] Write the integration tests `tests/integration/test_parallel_hypotheses.py`
   with the fakes. They cover:
   - the planner's 3 hypotheses become 3 attempts, all starting from the `repro` snapshot ID;
   - the `FakeExecutor` concurrency counter never exceeds `max_parallel`;
@@ -687,17 +687,17 @@ verified winner with the fewest changed lines, and no more than 3 concurrent bra
 
 ### Implementation for User Story 3
 
-- [ ] T067 [US3] Add the hypotheses prompt to `src/fixproof/agent/prompts.py`. The planner
+- [X] T067 [US3] Add the hypotheses prompt to `src/fixproof/agent/prompts.py`. The planner
   returns JSON `{hypotheses: [{id, statement (≤500 chars), suspected_files[]}]}` with 1–3 items,
   and invalid JSON triggers one repair retry.
-- [ ] T068 [US3] Implement the parallel runner in `src/fixproof/agent/hypotheses.py`:
+- [X] T068 [US3] Implement the parallel runner in `src/fixproof/agent/hypotheses.py`:
   - an `asyncio` semaphore of size `max_parallel`;
   - `BudgetTracker.split(n)` for per-branch budgets;
   - each branch runs `worker.py` and then `verify.py` from the `repro` snapshot;
   - cancel the rest on the first verified branch unless `exhaustive`;
   - choose the verified attempt with the smallest `Patch.changed_lines` (FR-014);
   - return the comparison rows for the report.
-- [ ] T069 [US3] Wire parallel mode into `src/fixproof/agent/orchestrator.py`,
+- [X] T069 [US3] Wire parallel mode into `src/fixproof/agent/orchestrator.py`,
   `src/fixproof/agent/report.py`, `src/fixproof/cli.py`, and `src/fixproof/web/app.py`:
   - `src/fixproof/agent/orchestrator.py`: when `mode=parallel`, the planning phase produces
     hypotheses and the fix phase delegates to `hypotheses.py`;

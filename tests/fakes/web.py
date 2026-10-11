@@ -18,6 +18,7 @@ from tests.fakes.calc_repo import CALC_FILES, ISSUE_URL, REPO_URL, calc_behavior
 from tests.fakes.fake_executor import FakeExecutor
 from tests.fakes.fake_github import FakeGitHub
 from tests.fakes.fake_model import FakeModelClient
+from tests.fakes.parallel import BranchScripts, parallel_planner
 from tests.fakes.scenario import happy_planner, happy_worker
 from tests.fakes.settings import make_settings
 
@@ -44,8 +45,11 @@ class Day:
 class Fakes:
     """Per-run fakes; ``gate`` holds every run inside its first pytest command until set."""
 
-    def __init__(self, github: FakeGitHub | None = None, *, gated: bool = False) -> None:
+    def __init__(
+        self, github: FakeGitHub | None = None, *, gated: bool = False, parallel: bool = False
+    ) -> None:
         self.github = github or FakeGitHub(CALC_FILES)
+        self.parallel = parallel
         self.gate = asyncio.Event()
         self.gated = gated
         self.executors: list[FakeExecutor] = []
@@ -54,8 +58,12 @@ class Fakes:
 
     def model(self, settings: Settings) -> FakeModelClient:
         model = FakeModelClient()
-        model.script(ModelRole.PLANNER, *happy_planner())
-        model.script(ModelRole.WORKER, *happy_worker())
+        if self.parallel:
+            model.script(ModelRole.PLANNER, *parallel_planner())
+            model.script(ModelRole.WORKER, *BranchScripts().worker_queue())
+        else:
+            model.script(ModelRole.PLANNER, *happy_planner())
+            model.script(ModelRole.WORKER, *happy_worker())
         self.models.append(model)
         return model
 

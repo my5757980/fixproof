@@ -34,9 +34,11 @@ class ModelGateway:
 
     Args:
         model: The model client (Token Factory, or a fake in tests).
-        budget: The run's budget tracker.
+        budget: The budget tracker the calls are charged to (a branch's share in parallel mode).
         bus: The run's event bus.
         sampling: The sampling parameters sent with every call, recorded in each event.
+        event_budget: The tracker shown in ``budget`` events; defaults to ``budget``. Parallel
+            branches pass the run's tracker so users see run totals.
     """
 
     def __init__(
@@ -45,9 +47,12 @@ class ModelGateway:
         budget: BudgetTracker,
         bus: EventBus,
         sampling: Mapping[str, float | int],
+        *,
+        event_budget: BudgetTracker | None = None,
     ) -> None:
         self._model = model
         self._budget = budget
+        self._event_budget = event_budget or budget
         self._bus = bus
         self._sampling = dict(sampling)
         self.models_used: dict[str, str] = {}
@@ -116,8 +121,9 @@ class ModelGateway:
                 {"role": role.value, "text": reply.reasoning[:REASONING_LIMIT]},
                 attempt_id=attempt_id,
             )
-        if self._budget.steps_used % BUDGET_EVENT_EVERY == 0:
-            self._bus.publish(EventType.BUDGET, {**self._budget.snapshot(), "limit_hit": None})
+        if self._event_budget.steps_used % BUDGET_EVENT_EVERY == 0:
+            snapshot = self._event_budget.snapshot()
+            self._bus.publish(EventType.BUDGET, {**snapshot, "limit_hit": None})
         return reply
 
 

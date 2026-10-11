@@ -36,7 +36,7 @@ from fixproof.agent.orchestrator import Orchestrator, RunRequest, new_event_bus
 from fixproof.config import ConfigError, Settings
 from fixproof.events import EventType, TraceEvent
 from fixproof.llm.client import ModelClient
-from fixproof.models import RUN_ID_PATTERN, OutcomeLabel, SampleTask, Task, TaskKind
+from fixproof.models import RUN_ID_PATTERN, OutcomeLabel, RunMode, SampleTask, Task, TaskKind
 from fixproof.repo.github import GitHubError, RepoSource, parse_issue_url, parse_repo_url
 from fixproof.sandbox.executor import Executor
 from fixproof.sandbox.factory import make_executor
@@ -520,8 +520,8 @@ class RunManager:
 
     def _resolve(self, payload: RunCreate) -> tuple[RunRequest, bool]:
         """Turn the request body into a ``RunRequest``; samples are trusted."""
-        if payload.mode != "single":
-            raise DemoError(400, "invalid_task", "Parallel mode is not available in the demo yet.")
+        mode = RunMode(payload.mode)
+        max_parallel = self._limits.max_parallel  # the demo allows at most 3 branches
         if payload.sample_id is not None:
             if payload.repo_url is not None or payload.task is not None:
                 raise DemoError(
@@ -536,6 +536,8 @@ class RunManager:
                 ref=sample.ref,
                 origin="web",
                 base_image=sample.image_tag,
+                mode=mode,
+                max_parallel=max_parallel,
             )
             return request, True
         if payload.repo_url is None or payload.task is None:
@@ -549,9 +551,15 @@ class RunManager:
             raise DemoError(400, exc.code, str(exc)) from exc
         except ValidationError as exc:
             raise DemoError(400, "invalid_task", "The task is empty or too long.") from exc
-        return RunRequest(
-            repo_url=payload.repo_url, task=task, ref=location.ref, origin="web"
-        ), False
+        request = RunRequest(
+            repo_url=payload.repo_url,
+            task=task,
+            ref=location.ref,
+            origin="web",
+            mode=mode,
+            max_parallel=max_parallel,
+        )
+        return request, False
 
     def _ensure_available(self) -> None:
         available, reason = self.live_status()

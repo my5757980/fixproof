@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from fixproof.events import EventType
-from fixproof.models import OutcomeLabel, StopReason
+from fixproof.models import OutcomeLabel, RunMode, StopReason
 from fixproof.trace import read_trace
 from fixproof.web.runs import (
     DailyBudget,
@@ -217,3 +217,15 @@ async def recorded_events(tmp_path: Path) -> list:  # type: ignore[type-arg]
     events = list(manager.events_history(created.run_id))
     await manager.shutdown()
     return events
+
+
+async def test_parallel_mode_is_capped_at_three_branches(tmp_path: Path) -> None:
+    manager, _ = make_manager(tmp_path, fakes=Fakes(parallel=True))
+    created = await manager.create(RunCreate(sample_id=SAMPLE.id, mode="parallel"), "192.0.2.40")
+    managed = manager.get(created.run_id)
+    assert managed is not None
+    assert managed.request.mode is RunMode.PARALLEL and managed.request.max_parallel == 3
+    await finish_all(manager)
+    view = manager.view(created.run_id)
+    assert view is not None and view["label"] == "verified"
+    await manager.shutdown()

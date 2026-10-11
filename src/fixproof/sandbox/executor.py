@@ -16,7 +16,6 @@ baseline commit, made right after the dependency install.
 
 from __future__ import annotations
 
-import asyncio
 import fnmatch
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -27,6 +26,7 @@ from fixproof.models import FileChange, FileStatus, Patch, Snapshot
 
 REPO_ROOT = "/workspace/repo"
 BASELINE_TAG = "fixproof-baseline"
+PATCH_MARKERS = ("===FIXPROOF-DIFF===", "===FIXPROOF-NUMSTAT===", "===FIXPROOF-NAME-STATUS===")
 GIT_IDENTITY = "-c user.email=agent@fixproof.dev -c user.name=fixproof"
 
 _TEST_FILE_PATTERNS = (
@@ -187,35 +187,64 @@ def parse_patch(unified_diff: str, numstat: str, name_status: str) -> Patch:
     return Patch(unified_diff=unified_diff, files=tuple(changes))
 
 
+def git_patch_command() -> str:
+    """Return one command printing the diff, numstat, and name-status sections.
+
+    Each section starts with a marker on its own line. Diff body lines always start with a
+    prefix (``+``, ``-``, a space, ``@@``, ``diff``...), so file content cannot forge a marker.
+    """
+    return (
+        f"git add -A && echo '{PATCH_MARKERS[0]}' && "
+        f"git diff --cached --no-color --no-ext-diff {BASELINE_TAG} && "
+        f"echo '{PATCH_MARKERS[1]}' && git diff --cached --numstat {BASELINE_TAG} && "
+        f"echo '{PATCH_MARKERS[2]}' && "
+        f"git diff --cached --name-status --no-renames {BASELINE_TAG}"
+    )
+
+
+def parse_patch_output(stdout: str) -> Patch:
+    """Parse the output of ``git_patch_command``.
+
+    Raises:
+        ValueError: If a section marker is missing.
+    """
+    sections: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    for line in stdout.split("\n"):
+        if line.rstrip("\r") in PATCH_MARKERS:
+            current = sections.setdefault(line.rstrip("\r"), [])
+        elif current is not None:
+            current.append(line)
+    if set(sections) != set(PATCH_MARKERS):
+        raise ValueError("the patch output is missing a section")
+    diff, numstat, name_status = ("\n".join(sections[m]).strip("\n") for m in PATCH_MARKERS)
+    return parse_patch(diff + "\n" if diff else "", numstat, name_status)
+
+
 async def compute_patch(executor: Executor, snapshot: Snapshot, *, timeout_s: int = 120) -> Patch:
     """Return the patch of ``snapshot`` against the baseline commit.
 
-    The three git commands run concurrently in disposable environments, so the snapshot itself
-    never changes.
+    One disposable command prints every git section, so the snapshot never changes and each
+    patch costs a single sandbox operation.
 
     Args:
         executor: The isolated environment holding the snapshot.
         snapshot: The state to diff (it must descend from the baseline commit).
-        timeout_s: Timeout of each git command.
+        timeout_s: Timeout of the git command.
 
     Returns:
         The patch, including new files.
 
     Raises:
-        ExecutorError: If a git command fails.
+        ExecutorError: If git fails.
     """
-    commands = (git_diff_command(), git_numstat_command(), git_name_status_command())
-    results = await asyncio.gather(
-        *(
-            executor.run(snapshot, command, timeout_s=timeout_s, mutate=False)
-            for command in commands
+    result, _ = await executor.run(snapshot, git_patch_command(), timeout_s=timeout_s, mutate=False)
+    if not result.ok:
+        raise ExecutorError(
+            f"git failed while computing the patch (exit {result.exit_code}): "
+            f"{result.stderr[-500:]}"
         )
-    )
-    for result, _ in results:
-        if not result.ok:
-            raise ExecutorError(
-                f"git failed while computing the patch (exit {result.exit_code}): "
-                f"{result.stderr[-500:]}"
-            )
-    diff, numstat, name_status = (result.stdout for result, _ in results)
-    return parse_patch(diff, numstat, name_status)
+    try:
+        return parse_patch_output(result.stdout)
+    except ValueError as exc:
+        raise ExecutorError(f"Unexpected git output while computing the patch: {exc}") from exc

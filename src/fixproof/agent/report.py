@@ -14,6 +14,7 @@ from fixproof.agent.verify import find_regressions, repro_passes
 from fixproof.models import (
     Citation,
     Evidence,
+    HypothesisRow,
     OutcomeLabel,
     Patch,
     Report,
@@ -138,6 +139,7 @@ def build_report(
     tokens: Mapping[str, int] | None = None,
     duration_s: float = 0.0,
     models: Mapping[str, str] | None = None,
+    hypotheses: Sequence[HypothesisRow] = (),
 ) -> Report:
     """Assemble the report. ``label`` must come from the harness (``verify.compute_label``).
 
@@ -171,6 +173,7 @@ def build_report(
         tokens=dict(tokens or {}),
         duration_s=round(duration_s, 3),
         models=dict(models or {}),
+        hypotheses=list(hypotheses),
     )
 
 
@@ -212,6 +215,8 @@ def render_markdown(report: Report, run: Run | None = None) -> str:
             "",
             *(f"- `{node_id}`" for node_id in report.preexisting_failures),
         ]
+    if report.hypotheses:
+        lines += ["", "## Hypotheses", "", *_hypotheses_table(report.hypotheses)]
     lines += ["", "## Patch", "", *_patch_section(report.patch)]
     lines += ["", "## Flags", "", *([f"- {flag}" for flag in report.flags] or ["_None._"])]
     lines += ["", "## Cost", "", *_cost_section(report)]
@@ -273,6 +278,23 @@ def _evidence_table(evidence: Evidence | None) -> list[str]:
         flaky = ", ".join(f"`{p}`" for p in evidence.baseline_flaky[:20])
         rows.append(("Flaky tests (excluded)", flaky))
     return ["| Check | Result |", "|---|---|", *(f"| {k} | {v} |" for k, v in rows)]
+
+
+def _hypotheses_table(rows: Sequence[HypothesisRow]) -> list[str]:
+    lines = [
+        "Each hypothesis ran in its own sandbox branch from the same reproduction snapshot.",
+        "",
+        "| Hypothesis | Outcome | Changed lines | Why |",
+        "|---|---|---|---|",
+    ]
+    for row in rows:
+        outcome = row.attempt_status.value.replace("_", " ")
+        if row.label is not None:
+            outcome += f" ({LABEL_TEXT[row.label]})"
+        changed = "" if row.changed_lines is None else str(row.changed_lines)
+        statement = _cell(f"{row.hypothesis_id}: {row.statement}")
+        lines.append(f"| {statement} | {outcome} | {changed} | {_cell(row.why)} |")
+    return lines
 
 
 def _patch_section(patch: Patch | None) -> list[str]:

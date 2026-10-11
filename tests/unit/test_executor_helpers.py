@@ -65,3 +65,20 @@ def test_command_result_ok() -> None:
     assert CommandResult(stdout="", exit_code=0).ok
     assert not CommandResult(stdout="", exit_code=1).ok
     assert not CommandResult(stdout="", exit_code=0, timed_out=True).ok
+
+
+def test_patch_command_output_round_trip() -> None:
+    from fixproof.sandbox.executor import PATCH_MARKERS, git_patch_command, parse_patch_output
+
+    diff = "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b"
+    stdout = (
+        f"{PATCH_MARKERS[0]}\n{diff}\n{PATCH_MARKERS[1]}\n1\t1\tx.py\n{PATCH_MARKERS[2]}\nM\tx.py\n"
+    )
+    patch = parse_patch_output(stdout)
+    assert patch.unified_diff == diff + "\n"
+    assert [(f.path, f.added, f.removed) for f in patch.files] == [("x.py", 1, 1)]
+    assert BASELINE_TAG in git_patch_command()
+    empty = parse_patch_output("".join(f"{marker}\n" for marker in PATCH_MARKERS))
+    assert empty.is_empty and empty.unified_diff == ""
+    with pytest.raises(ValueError):
+        parse_patch_output("no markers here")

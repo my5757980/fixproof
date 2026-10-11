@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from fixproof.models import Citation, Evidence, Task, TaskKind
+from fixproof.models import Citation, Evidence, Hypothesis, Task, TaskKind
 from fixproof.tools.schemas import FinishArgs
 
 REPO_MAP_LIMIT = 300
@@ -251,6 +251,37 @@ def report_messages(
     return _messages(PLANNER_SYSTEM, user)
 
 
+def _hypotheses_format(limit: int) -> str:
+    return (
+        'Answer with one JSON object only: {"hypotheses": [{"id": "h1", "statement": "<the '
+        'suspected root cause, at most 500 characters>", "suspected_files": ["<path>", ...]}]} '
+        f"with 1 to {limit} items."
+    )
+
+
+def hypotheses_messages(
+    task: Task, paths: Sequence[str], evidence: Evidence | None, plan: Plan, limit: int
+) -> list[dict[str, Any]]:
+    """Ask the planner for competing root-cause hypotheses, one per parallel branch."""
+    user = "\n\n".join(
+        [
+            task_block(task),
+            data_block("repository", repo_map(paths)),
+            data_block("tests", baseline_summary(evidence)),
+            data_block("plan", plan_text(plan)),
+            f"Propose up to {limit} competing hypotheses for the root cause. Each one must lead "
+            "to a different fix, and each will be tried in its own sandbox branch. "
+            + _hypotheses_format(limit),
+        ]
+    )
+    return _messages(PLANNER_SYSTEM, user)
+
+
+def hypotheses_repair_message(limit: int) -> str:
+    """Ask once more after an answer that could not be parsed."""
+    return "That answer was not valid JSON in the requested shape. " + _hypotheses_format(limit)
+
+
 # -- worker --------------------------------------------------------------------------------
 
 
@@ -333,6 +364,22 @@ def fix_message(
         "existing tests. When you are done, call finish with summary, root_cause, and citations."
     )
     return "\n\n".join(parts)
+
+
+def hypothesis_fix_message(
+    task: Task, plan: Plan, evidence: Evidence, hypothesis: Hypothesis, paths: Sequence[str]
+) -> str:
+    """First message of a parallel branch: fix the bug under one hypothesis."""
+    files = ", ".join(hypothesis.suspected_files) or "not given"
+    return "\n\n".join(
+        [
+            fix_message(task, plan, evidence, paths=paths, include_context=True),
+            f"Hypothesis {hypothesis.id}: {hypothesis.statement}\nSuspected files: {files}\n"
+            "Work only on this hypothesis: make the smallest fix consistent with it, check it with "
+            "run_tests, then call finish. If the hypothesis turns out to be wrong, say so in "
+            "finish instead of trying a different idea.",
+        ]
+    )
 
 
 def reproduction_feedback(reason: str) -> str:
@@ -418,6 +465,32 @@ def parse_report(text: str | None) -> ReportDraft | None:
         root_cause_md=str(data.get("root_cause_md") or "").strip()[:6000],
         citations=tuple(citations[:10]),
     )
+
+
+def parse_hypotheses(text: str | None, limit: int) -> list[Hypothesis] | None:
+    """Parse the planner's hypotheses; IDs are renumbered ``h1``, ``h2``... in answer order."""
+    data = parse_json_object(text)
+    items = data.get("hypotheses") if data else None
+    if not isinstance(items, list):
+        return None
+    hypotheses: list[Hypothesis] = []
+    for item in items:
+        if len(hypotheses) == limit:
+            break
+        if not isinstance(item, dict):
+            continue
+        statement = str(item.get("statement") or "").strip()[:500]
+        if not statement:
+            continue
+        files = tuple(
+            str(path).strip()[:200]
+            for path in item.get("suspected_files") or []
+            if str(path).strip()
+        )[:10]
+        hypotheses.append(
+            Hypothesis(id=f"h{len(hypotheses) + 1}", statement=statement, suspected_files=files)
+        )
+    return hypotheses or None
 
 
 def parse_install_command(text: str | None) -> str | None:
