@@ -50,6 +50,18 @@ Entry format: **date**, what we used it for, what worked, what needs improvement
     disk limits, maximum timeout, and pricing are not documented on the pages we found.
   - *Improvement*: The mini-swe-agent integration page currently shows a stub that raises a
     `RuntimeError`, and the preloaded SWE-bench image names are not listed.
+- **2026-10-11**: Built our executor on the installed `contree-sdk` 0.3.6. The SDK itself is
+  pleasant: awaiting `image.run(...)` returns a result image, `disposable=False` gives a new
+  snapshot, and cancelling the awaiting task also cancels the operation on the server.
+  - *Improvement*: The docs we followed describe `ContreeAsyncClient(token, base_url=...)` from
+    `contree_client.httpx`, wrapped by `Contree(api_client)`. Version 0.3.6 has no such class; the
+    client is `Contree(config=ContreeConfig(auth=IAMAuth(token=..., project_id=..., base_url=...)))`,
+    and the project comes from `NEBIUS_PROJECT_ID`, not the `CONTREE_PROJECT` used in the CLI
+    docs. One consistent, versioned getting-started page would save a lot of guesswork.
+  - *Improvement*: `IAMAuth` treats any field value that matches an environment variable name as
+    the name of that variable, which is surprising when passing literal values.
+  - *Improvement*: The package ships no type information (`py.typed`), so strict type checkers
+    cannot check calls into it.
 
 ## Nemotron models
 

@@ -60,6 +60,11 @@ strict = true
 files = ["src/fixproof"]
 plugins = ["pydantic.mypy"]
 
+# contree-sdk ships no type information (no py.typed marker); it is wrapped in sandbox/contree.py.
+[[tool.mypy.overrides]]
+module = ["contree_sdk", "contree_sdk.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

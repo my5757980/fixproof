@@ -8,9 +8,10 @@ and never enters a sandbox. Errors carry the codes used by the web API contract.
 from __future__ import annotations
 
 import re
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -106,6 +107,72 @@ def parse_issue_url(url: str, repo: RepoLocation) -> int:
             f"The issue belongs to {match['owner']}/{match['name']}, not {repo.owner}/{repo.name}.",
         )
     return int(match["number"])
+
+
+def _strip_top(name: str) -> str:
+    """Drop the single top-level directory of a GitHub tarball member name."""
+    return name.split("/", 1)[1] if "/" in name else ""
+
+
+def tarball_paths(tarball: Path) -> list[str]:
+    """Return the file paths in a GitHub tarball, relative to the repository root.
+
+    The archive is only listed, never extracted on the host.
+    """
+    with tarfile.open(tarball, "r:*") as archive:
+        return sorted(
+            path
+            for member in archive.getmembers()
+            if member.isfile() and (path := _strip_top(member.name))
+        )
+
+
+def read_tarball_text(tarball: Path, path: str, *, max_bytes: int = 1_000_000) -> str:
+    """Return one file of a GitHub tarball as text, read in memory (never extracted).
+
+    Raises:
+        FileNotFoundError: If the archive has no such file.
+    """
+    with tarfile.open(tarball, "r:*") as archive:
+        for member in archive.getmembers():
+            if member.isfile() and _strip_top(member.name) == path:
+                handle = archive.extractfile(member)
+                if handle is None:
+                    break
+                return handle.read(max_bytes).decode("utf-8", errors="replace")
+    raise FileNotFoundError(path)
+
+
+class RepoSource(Protocol):
+    """Where the orchestrator gets repositories and issues (``GitHubClient``; faked in tests)."""
+
+    async def get_repo(self, location: RepoLocation, *, max_kb: int | None = None) -> RepoRef:
+        """Fetch repository metadata, enforcing the public and size rules."""
+        ...
+
+    async def resolve_ref(self, location: RepoLocation, ref: str) -> str:
+        """Return the commit SHA that ``ref`` points to."""
+        ...
+
+    async def download_tarball(
+        self, location: RepoLocation, sha: str, dest: Path, *, max_bytes: int
+    ) -> Path:
+        """Download the repository tarball at ``sha`` to ``dest``."""
+        ...
+
+    async def get_issue(self, location: RepoLocation, number: int) -> tuple[str, str]:
+        """Return the issue title and body."""
+        ...
+
+    async def get_tree(
+        self, location: RepoLocation, sha: str, *, limit: int = TREE_LIMIT
+    ) -> list[str]:
+        """Return file paths in the repository at ``sha``."""
+        ...
+
+    async def aclose(self) -> None:
+        """Release network resources."""
+        ...
 
 
 class GitHubClient:

@@ -32,6 +32,17 @@ def test_step_limit() -> None:
     assert info.value.reason is StopReason.BUDGET_STEPS
 
 
+def test_check_without_steps_ignores_only_the_step_limit() -> None:
+    tracker, clock = make(max_steps=5, max_seconds=60)
+    for _ in range(5):
+        tracker.add_step()
+    tracker.check(steps=False)
+    clock.now += 61
+    with pytest.raises(BudgetExceeded) as info:
+        tracker.check(steps=False)
+    assert info.value.reason is StopReason.BUDGET_TIME
+
+
 def test_time_limit() -> None:
     tracker, clock = make(max_seconds=60)
     tracker.check()

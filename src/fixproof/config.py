@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from fixproof.models import Budget, ModelRole
@@ -69,7 +69,10 @@ class Settings(BaseSettings):
 
     # Token Factory Sandboxes (code execution)
     contree_url: str = Field(default=SANDBOXES_URL, validation_alias="CONTREE_URL")
-    contree_project: str | None = Field(default=None, validation_alias="CONTREE_PROJECT")
+    # contree-sdk itself reads the project from NEBIUS_PROJECT_ID, so both names are accepted.
+    contree_project: str | None = Field(
+        default=None, validation_alias=AliasChoices("CONTREE_PROJECT", "NEBIUS_PROJECT_ID")
+    )
     contree_token: SecretStr | None = Field(default=None, validation_alias="CONTREE_TOKEN")
     executor: Literal["contree", "docker"] = Field(
         default="contree", validation_alias="FIXPROOF_EXECUTOR"
@@ -134,13 +137,13 @@ class Settings(BaseSettings):
         """Return the Sandboxes project ID.
 
         Raises:
-            ConfigError: If ``CONTREE_PROJECT`` is not set.
+            ConfigError: If neither ``CONTREE_PROJECT`` nor ``NEBIUS_PROJECT_ID`` is set.
         """
         if not self.contree_project:
             raise ConfigError(
                 "CONTREE_PROJECT is not set. Copy your Sandboxes project ID from the Token "
-                "Factory console into .env (request access at "
-                "https://tokenfactory.nebius.com/sandboxes/about)."
+                "Factory console into .env as CONTREE_PROJECT (or NEBIUS_PROJECT_ID); request "
+                "access at https://tokenfactory.nebius.com/sandboxes/about."
             )
         return self.contree_project
 

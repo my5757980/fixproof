@@ -7,10 +7,13 @@ because it includes the ``file`` attribute, which gives exact pytest node IDs.
 
 from __future__ import annotations
 
+import itertools
 import shlex
 import xml.etree.ElementTree as ET
 
-from fixproof.models import TestCaseResult, TestOutcome, TestRun
+from fixproof.events import EventBus, EventType
+from fixproof.models import Snapshot, TestCaseResult, TestOutcome, TestRun
+from fixproof.sandbox.executor import Executor
 
 JUNIT_PATH = "/tmp/fixproof-junit.xml"
 OUT_PATH = "/tmp/fixproof-pytest-out.txt"
@@ -109,6 +112,71 @@ def parse_test_output(
     )
 
 
+class TestRunner:
+    """Run pytest in the sandbox, parse the results, and publish one ``test_run`` event per run.
+
+    One runner is shared by a whole run, so test-run IDs (``tr-<n>``) are unique within it.
+
+    Args:
+        executor: The isolated environment the tests run in.
+        timeout_s: Timeout of each pytest command, in seconds.
+        bus: Event bus that receives the ``test_run`` events, if any.
+    """
+
+    __test__ = False  # not a pytest test class
+
+    def __init__(self, executor: Executor, *, timeout_s: int, bus: EventBus | None = None) -> None:
+        self._executor = executor
+        self._timeout_s = timeout_s
+        self._bus = bus
+        self._ids = itertools.count(1)
+
+    async def run(
+        self, snapshot: Snapshot, selector: str | None = None, *, attempt_id: str | None = None
+    ) -> TestRun:
+        """Run ``selector`` (or the whole suite) on ``snapshot`` without changing it.
+
+        Args:
+            snapshot: The state to test.
+            selector: Node IDs, paths, or pytest options; ``None`` runs the full suite.
+            attempt_id: The attempt the run belongs to, for the trace.
+
+        Returns:
+            The parsed test run.
+
+        Raises:
+            ValueError: If the selector has unbalanced quotes.
+        """
+        command = build_pytest_command(selector)
+        test_run_id = f"tr-{next(self._ids)}"
+        result, _ = await self._executor.run(
+            snapshot, command, timeout_s=self._timeout_s, mutate=False
+        )
+        run = parse_test_output(
+            result.stdout,
+            result.exit_code,
+            result.timed_out,
+            snapshot.image_id,
+            selector,
+            test_run_id=test_run_id,
+        )
+        if self._bus is not None:
+            self._bus.publish(
+                EventType.TEST_RUN,
+                {
+                    "test_run_id": run.id,
+                    "selector": selector,
+                    "counts": run.counts,
+                    "failed_ids": sorted(run.failed_ids)[:50],
+                    "timed_out": run.timed_out,
+                    "exit_code": run.exit_code,
+                    "elapsed_s": round(result.elapsed_s or run.duration_s, 3),
+                },
+                attempt_id=attempt_id,
+            )
+        return run
+
+
 def _between(text: str, begin: str, end: str) -> str | None:
     start = text.find(begin)
     if start == -1:
@@ -144,7 +212,8 @@ def _parse_case(case: ET.Element) -> TestCaseResult:
         child = case.find(tag)
         if child is not None:
             outcome = value
-            parts = [child.get("message") or "", (child.text or "").strip()]
+            short, detail = child.get("message") or "", (child.text or "").strip()
+            parts = [short] if detail == short else [short, detail]
             message = "\n".join(p for p in parts if p)[:_MESSAGE_LIMIT] or None
             break
     return TestCaseResult(

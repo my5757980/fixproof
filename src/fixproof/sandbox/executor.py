@@ -16,6 +16,7 @@ baseline commit, made right after the dependency install.
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -184,3 +185,37 @@ def parse_patch(unified_diff: str, numstat: str, name_status: str) -> Patch:
             )
         )
     return Patch(unified_diff=unified_diff, files=tuple(changes))
+
+
+async def compute_patch(executor: Executor, snapshot: Snapshot, *, timeout_s: int = 120) -> Patch:
+    """Return the patch of ``snapshot`` against the baseline commit.
+
+    The three git commands run concurrently in disposable environments, so the snapshot itself
+    never changes.
+
+    Args:
+        executor: The isolated environment holding the snapshot.
+        snapshot: The state to diff (it must descend from the baseline commit).
+        timeout_s: Timeout of each git command.
+
+    Returns:
+        The patch, including new files.
+
+    Raises:
+        ExecutorError: If a git command fails.
+    """
+    commands = (git_diff_command(), git_numstat_command(), git_name_status_command())
+    results = await asyncio.gather(
+        *(
+            executor.run(snapshot, command, timeout_s=timeout_s, mutate=False)
+            for command in commands
+        )
+    )
+    for result, _ in results:
+        if not result.ok:
+            raise ExecutorError(
+                f"git failed while computing the patch (exit {result.exit_code}): "
+                f"{result.stderr[-500:]}"
+            )
+    diff, numstat, name_status = (result.stdout for result, _ in results)
+    return parse_patch(diff, numstat, name_status)

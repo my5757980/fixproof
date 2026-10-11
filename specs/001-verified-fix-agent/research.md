@@ -83,6 +83,14 @@ once Token Factory and Sandboxes access is granted.
   `ContreeAsyncClient(token, base_url=...)` from `contree_client.httpx`, wrapped by
   `Contree(api_client)`. Sync: `ContreeSync`. A profile-based alternative,
   `ContreeAsyncClient.from_profile()`, also exists.
+  - **Verified 2026-10-11 against the installed contree-sdk 0.3.6** (the docs above are out of
+    date): the async client is
+    `Contree(config=ContreeConfig(auth=IAMAuth(token=..., project_id=..., base_url=...)))`;
+    `IAMAuth` defaults to `NEBIUS_API_KEY`, `NEBIUS_PROJECT_ID`, and
+    `https://api.tokenfactory.nebius.com/sandboxes/`. `images.oci(ref)` resolves a tag and
+    imports it when missing. Errors are dataclass exceptions in `contree_sdk.sdk.exceptions`
+    (429, timeouts, transport, and 5xx are retried by us). Cancelling the awaiting task cancels
+    the server operation. `src/fixproof/sandbox/contree.py` follows this API.
 - **Endpoint and auth**: The CLI docs use `CONTREE_URL=https://api.tokenfactory.nebius.com/sandboxes`
   plus a bearer token and a project ID. The token is `CONTREE_TOKEN`, falling back to
   `NEBIUS_API_KEY`; the project is `CONTREE_PROJECT` or `NEBIUS_AI_PROJECT`. The official demos say

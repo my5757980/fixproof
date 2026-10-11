@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import fnmatch
 import inspect
 import io
 import itertools
@@ -117,6 +118,8 @@ class FakeExecutor:
         fs = self._fs[snapshot.image_id]
         key = _norm(path)
         if key not in fs:
+            if any(name.startswith(key.rstrip("/") + "/") for name in fs):
+                raise IsADirectoryError(path)
             raise FileNotFoundError(path)
         return fs[key]
 
@@ -163,6 +166,8 @@ class FakeExecutor:
                 return handler(command, fs)
         if "python -m pytest" in command:
             return self._pytest(command, fs)
+        if command.startswith("grep -rnE"):
+            return _grep(command, fs)
         if "pip install" in command:
             return self._pip()
         if command.startswith("git init"):
@@ -297,6 +302,33 @@ def _read_tarball(path: Path) -> Files:
             if extracted is not None:
                 files[_norm(name)] = extracted.read()
     return files
+
+
+def _grep(command: str, fs: Files) -> CommandResult:
+    """Simulate ``fixproof.tools.handlers.build_search_command`` (``grep -rnE ... | head``)."""
+    left, _, limit = command.partition(" | head -n ")
+    tokens = shlex.split(left)
+    pattern = tokens[tokens.index("-e") + 1]
+    glob = next(t.removeprefix("--include=") for t in tokens if t.startswith("--include="))
+    root = tokens[tokens.index("--") + 1]
+    try:
+        regex = re.compile(pattern)
+    except re.error:
+        return CommandResult(stdout="", stderr="grep: Unmatched ( or \\(")
+    prefix = "" if root == "." else root.rstrip("/") + "/"
+    if prefix and not any(p == root or p.startswith(prefix) for p in fs):
+        return CommandResult(stdout="", stderr=f"grep: {root}: No such file or directory")
+    lines = []
+    for path in sorted(fs):
+        in_root = not prefix or path == root or path.startswith(prefix)
+        content = fs[path]
+        if not in_root or not fnmatch.fnmatch(path.rsplit("/", 1)[-1], glob) or b"\0" in content:
+            continue
+        shown = f"./{path}" if root == "." else path
+        for number, text in enumerate(content.decode("utf-8", "replace").splitlines(), start=1):
+            if regex.search(text):
+                lines.append(f"{shown}:{number}:{text}")
+    return CommandResult(stdout="\n".join(lines[: int(limit or len(lines) or 1)]))
 
 
 def _selector_from(command: str) -> str | None:

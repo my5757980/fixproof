@@ -7,9 +7,10 @@ what the model was (and was not) shown.
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections import defaultdict, deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import count
 from typing import Any
@@ -19,7 +20,9 @@ from fixproof.llm.client import ModelReply, ModelUnavailableError
 from fixproof.llm.toolcall import ToolCall
 from fixproof.models import ModelRole
 
-ScriptItem = ModelReply | Exception | Callable[[list[dict[str, Any]]], ModelReply]
+ScriptItem = (
+    ModelReply | Exception | Callable[[list[dict[str, Any]]], ModelReply | Awaitable[ModelReply]]
+)
 _ids = count(1)
 
 ROLE_MODELS = {
@@ -66,8 +69,15 @@ class FakeModelClient:
         if isinstance(item, Exception):
             raise item
         if callable(item) and not isinstance(item, ModelReply):
-            return item(conversation)
+            built = item(conversation)
+            if inspect.isawaitable(built):
+                return await built
+            return built
         return item
+
+    def remaining(self, role: ModelRole) -> int:
+        """Number of scripted replies not used yet for ``role``."""
+        return len(self.queues[role])
 
     async def list_models(self) -> list[str]:
         return list(self.available_models)

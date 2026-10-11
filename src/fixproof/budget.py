@@ -98,15 +98,20 @@ class BudgetTracker:
         if self._parent is not None:
             self._parent.charge(model, prompt_tokens, completion_tokens, cost_usd)
 
-    def check(self) -> None:
+    def check(self, *, steps: bool = True) -> None:
         """Raise ``BudgetExceeded`` if this tracker or its parent is out of budget.
+
+        Args:
+            steps: Whether to enforce the step limit. Harness work that makes no model call
+                (verification, reporting) checks only the time and cost limits, so a fix found
+                on the last allowed step is still verified.
 
         Raises:
             BudgetExceeded: With the reason of the first limit that is reached.
         """
         if self._parent is not None:
-            self._parent.check()
-        if self.steps_used >= self.max_steps:
+            self._parent.check(steps=steps)
+        if steps and self.steps_used >= self.max_steps:
             raise BudgetExceeded(
                 StopReason.BUDGET_STEPS, f"step limit reached ({self.steps_used}/{self.max_steps})"
             )

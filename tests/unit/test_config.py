@@ -17,6 +17,7 @@ ENV_VARS = [
     "FIXPROOF_PRICES",
     "CONTREE_URL",
     "CONTREE_PROJECT",
+    "NEBIUS_PROJECT_ID",
     "CONTREE_TOKEN",
     "FIXPROOF_EXECUTOR",
     "FIXPROOF_BASE_IMAGE",
@@ -99,6 +100,17 @@ def test_sandbox_token_falls_back_to_nebius_key(clean_env: None) -> None:
     assert make(nebius_api_key="abc12345", contree_token="tok98765").sandbox_token() == "tok98765"
     with pytest.raises(ConfigError, match="CONTREE_TOKEN"):
         make().sandbox_token()
+
+
+def test_sandbox_project_accepts_the_sdk_variable_name(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(ConfigError, match="CONTREE_PROJECT"):
+        make().require_sandbox_project()
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-from-sdk-name")
+    assert make().require_sandbox_project() == "project-from-sdk-name"
+    monkeypatch.setenv("CONTREE_PROJECT", "project-from-fixproof-name")
+    assert make().require_sandbox_project() == "project-from-fixproof-name"
 
 
 def test_model_chain_per_role(clean_env: None) -> None:
