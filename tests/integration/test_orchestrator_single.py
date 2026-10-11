@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fixproof.agent.orchestrator import RunRequest
 from fixproof.events import EventType
 from fixproof.models import (
     Budget,
@@ -28,6 +29,7 @@ from tests.fakes.calc_repo import (
     LEGACY_ID,
     PASSING_PATH,
     PASSING_TEST,
+    REPO_URL,
     REPRO_ID,
     REPRO_PATH,
     REPRO_TEST,
@@ -42,6 +44,7 @@ from tests.fakes.fake_model import (
     unavailable,
 )
 from tests.fakes.scenario import (
+    ISSUE_TASK,
     Scenario,
     create_file_reply,
     fix_replies,
@@ -432,3 +435,29 @@ async def test_o_failing_test_task_that_passes_is_not_reproducible(tmp_runs_dir:
 
     assert run.stop_reason is StopReason.NOT_REPRODUCIBLE
     assert run.label is OutcomeLabel.NOT_VERIFIED
+
+
+async def test_p_a_run_stopped_before_it_starts_still_has_a_complete_trace(
+    tmp_runs_dir: Path,
+) -> None:
+    s = make_scenario(tmp_runs_dir, planner=[], worker=[])
+    s.orchestrator.stop()
+    run = await s.run()
+
+    assert run.stop_reason is StopReason.USER_STOP
+    types = s.types()
+    assert types[0] is EventType.RUN_STARTED and types[-1] is EventType.RUN_FINISHED
+    assert s.executor.commands == [] and s.model.requests == []
+    assert load_report(s).stop_reason is StopReason.USER_STOP
+
+
+async def test_q_a_request_can_choose_its_base_image(tmp_runs_dir: Path) -> None:
+    s = make_scenario(tmp_runs_dir)
+    await s.orchestrator.run(
+        RunRequest(repo_url=REPO_URL, task=ISSUE_TASK, base_image="python:3.9")
+    )
+
+    assert s.executor.base_images == ["python:3.9"]
+    default = make_scenario(tmp_runs_dir)
+    await default.run()
+    assert default.executor.base_images == ["python:3.12"]

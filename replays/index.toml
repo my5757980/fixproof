@@ -1,0 +1,10 @@
+# Labeled replays of real recorded runs (FR-018). The demo offers them when live runs are not
+# available (visitor limit, daily budget, or a configuration problem), and every replayed event
+# carries replay=true. Each entry needs replays/<name>.jsonl, recorded from a real Nebius run
+# (tasks.md T064) and checked for secrets before it is committed. Example entry:
+#
+# [[replays]]
+# name = "flask-empty-blueprint-name"
+# title = "Flask: an empty Blueprint name should raise ValueError"
+# label = "verified"
+# recorded_at = "2026-10-20T10:00:00Z"

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FixProof: bug fixes with proof</title>
+  <meta name="description" content="An autonomous agent that fixes bugs in public Python repositories and proves every fix with tests.">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>FixProof</h1>
+      <p class="tagline">
+        An autonomous agent that fixes bugs in public Python repositories and proves every fix
+        with tests. Reasoning by NVIDIA Nemotron on Nebius Token Factory; repository code runs
+        only in Token Factory Sandboxes. The harness, not the model, decides whether a fix is
+        verified.
+      </p>
+      <p id="health" class="health" role="status">Checking the service…</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="start-panel" class="panel" aria-labelledby="start-title">
+      <h2 id="start-title">Start a run</h2>
+      <p class="hint">Pick a real bug. Each sample is an already-fixed bug, checked out at the commit before the official fix.</p>
+      <div id="samples" class="samples" aria-live="polite"></div>
+
+      <details class="custom">
+        <summary>Or try your own public repository</summary>
+        <form id="run-form" novalidate>
+          <label for="repo-url">Public GitHub repository (up to 50 MB, Python with pytest)</label>
+          <input id="repo-url" name="repo_url" type="url" inputmode="url" autocomplete="off"
+                 placeholder="https://github.com/owner/repo" required>
+          <label for="task-kind">What to fix</label>
+          <select id="task-kind" name="kind">
+            <option value="issue">A GitHub issue of that repository</option>
+            <option value="failing_test">A failing test (pytest node ID)</option>
+            <option value="description">A plain-English bug description</option>
+          </select>
+          <label for="task-value" id="task-value-label">Issue URL</label>
+          <textarea id="task-value" name="value" rows="3" maxlength="4000" required
+                    placeholder="https://github.com/owner/repo/issues/123"></textarea>
+          <p id="form-error" class="error" role="alert"></p>
+          <button type="submit">Start run</button>
+        </form>
+      </details>
+
+      <p id="limit-message" class="notice" role="alert" hidden></p>
+      <div id="replays" class="replays"></div>
+    </section>
+
+    <section id="run-panel" class="panel" aria-labelledby="run-title" hidden>
+      <p id="replay-banner" class="replay-banner" hidden>
+        REPLAY: a recording of a real earlier run, not a live run.
+      </p>
+      <div class="run-head">
+        <h2 id="run-title" tabindex="-1">Run</h2>
+        <span id="label-badge" class="badge badge-running">Running</span>
+        <button id="stop-button" type="button" class="danger" hidden>Stop</button>
+      </div>
+      <p id="run-meta" class="meta"></p>
+      <p id="run-notice" class="notice" role="status" hidden></p>
+
+      <div class="columns">
+        <div class="column">
+          <h3>Plan</h3>
+          <p id="plan-note" class="hint"></p>
+          <ol id="plan" class="plan"></ol>
+          <h3>Live timeline</h3>
+          <label class="toggle"><input id="show-details" type="checkbox"> Show model calls and sandbox operations</label>
+          <ol id="timeline" class="timeline" aria-live="polite" aria-relevant="additions"></ol>
+        </div>
+        <div class="column">
+          <h3>Evidence</h3>
+          <table class="evidence">
+            <caption class="visually-hidden">Test evidence collected by the harness</caption>
+            <tbody id="evidence"></tbody>
+          </table>
+          <h3>Result</h3>
+          <div id="report" class="report"><p class="hint">The report appears when the run ends.</p></div>
+          <h3>Patch</h3>
+          <p><a id="patch-link" href="#" download hidden>Download patch.diff</a></p>
+          <pre id="diff" class="diff" tabindex="0" aria-label="Patch"></pre>
+          <h3>Budget</h3>
+          <p id="budget" class="meta">No model calls yet.</p>
+        </div>
+      </div>
+      <p><button id="new-run" type="button" class="secondary">Start another run</button></p>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p>
+      Every live run is bounded by steps, time, and cost, and visitors have a daily limit. When
+      live runs are unavailable, you can watch clearly labeled replays of recorded real runs.
+      This demo never applies patches or opens pull requests.
+    </p>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

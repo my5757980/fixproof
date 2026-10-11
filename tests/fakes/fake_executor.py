@@ -59,6 +59,7 @@ class FakeExecutor:
         self.install_failures_remaining = 0
         self.test_behavior: TestBehavior | None = None
         self.commands: list[CommandRecord] = []
+        self.base_images: list[str] = []
         self.written: list[dict[str, bytes]] = []
         self.active = 0
         self.max_active = 0
@@ -86,6 +87,7 @@ class FakeExecutor:
     # -- Executor protocol -------------------------------------------------------------------
 
     async def prepare_repo(self, tarball_path: Path, base_image: str) -> Snapshot:
+        self.base_images.append(base_image)
         files = dict(self.initial_files)
         if tarball_path.exists():
             files = _read_tarball(tarball_path)

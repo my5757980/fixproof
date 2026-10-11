@@ -75,6 +75,7 @@ class DockerExecutor:
         self._runner = runner
         self._on_event = on_event
         self._containers: set[str] = set()
+        self._images: list[str] = []  # committed snapshots and tags, removed on close
         print(BANNER, file=banner_stream or sys.stderr)
 
     async def prepare_repo(self, tarball_path: Path, base_image: str) -> Snapshot:
@@ -203,7 +204,9 @@ class DockerExecutor:
 
     async def tag(self, snapshot: Snapshot, label: str) -> Snapshot:
         """Tag the image as ``<label>:latest`` (Docker requires lowercase names)."""
-        await self._docker("tag", snapshot.image_id, f"{label.lower()}:latest")
+        name = f"{label.lower()}:latest"
+        await self._docker("tag", snapshot.image_id, name)
+        self._images.append(name)
         return snapshot.model_copy(update={"tag": label, "label": label.rsplit("/", 1)[-1]})
 
     async def cancel_all(self) -> None:
@@ -213,9 +216,17 @@ class DockerExecutor:
                 await self._runner(["docker", "kill", container], None, 30)
 
     async def close(self) -> None:
-        """Remove every container this executor created."""
+        """Remove every container, snapshot image, and tag this executor created.
+
+        The run's report and patch are already on disk by then; without this cleanup every run
+        would leave its installed environments behind as local images.
+        """
         for container in list(self._containers):
             await self._remove(container)
+        for image in reversed(self._images):
+            with contextlib.suppress(Exception):
+                await self._runner(["docker", "rmi", "-f", image], None, 120)
+        self._images.clear()
 
     async def list_images(self, limit: int = 1) -> list[str]:
         """Return up to ``limit`` local image names (``doctor`` reachability check)."""
@@ -236,7 +247,9 @@ class DockerExecutor:
         return container
 
     async def _commit(self, container: str) -> str:
-        return (await self._docker("commit", container)).strip()
+        image = (await self._docker("commit", container)).strip()
+        self._images.append(image)
+        return image
 
     async def _remove(self, container: str) -> None:
         self._containers.discard(container)

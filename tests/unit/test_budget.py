@@ -104,3 +104,11 @@ def test_split_requires_positive_n() -> None:
     tracker, _ = make()
     with pytest.raises(ValueError):
         tracker.split(0)
+
+
+def test_restart_clock_ignores_time_spent_waiting() -> None:
+    tracker, clock = make(max_seconds=60)
+    clock.now += 500  # waited in a queue
+    tracker.restart_clock()
+    tracker.check()
+    assert tracker.seconds_elapsed == 0

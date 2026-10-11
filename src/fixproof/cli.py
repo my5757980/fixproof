@@ -22,18 +22,13 @@ from fixproof import __version__
 from fixproof.agent.orchestrator import Orchestrator, RunRequest, new_event_bus
 from fixproof.config import ConfigError, Settings, load_settings
 from fixproof.events import EventType, TraceEvent
-from fixproof.llm.client import ModelClient, TokenFactoryClient
+from fixproof.llm.client import ModelClient
 from fixproof.models import Budget, OutcomeLabel, Run, StopReason, Task, TaskKind
-from fixproof.repo.github import (
-    GitHubClient,
-    GitHubError,
-    RepoSource,
-    parse_issue_url,
-    parse_repo_url,
-)
+from fixproof.repo.github import GitHubError, RepoSource, parse_issue_url, parse_repo_url
 from fixproof.sandbox.executor import Executor
-from fixproof.sandbox.factory import make_executor
+from fixproof.sandbox.factory import assert_demo_safe, make_executor
 from fixproof.trace import replay as replay_trace
+from fixproof.wiring import github_source, token_factory_client
 
 EXIT_VERIFIED = 0
 EXIT_INTERNAL_ERROR = 1
@@ -56,23 +51,14 @@ app = typer.Typer(
 )
 
 
-def _github_source(settings: Settings) -> RepoSource:
-    token = settings.github_token.get_secret_value() if settings.github_token else None
-    return GitHubClient(token=token or None)
-
-
-def _token_factory(settings: Settings) -> ModelClient:
-    return TokenFactoryClient(settings)
-
-
 @dataclass
 class Factories:
     """How the CLI builds its dependencies; tests replace them with fakes."""
 
     settings: Callable[[], Settings] = load_settings
-    model: Callable[[Settings], ModelClient] = _token_factory
+    model: Callable[[Settings], ModelClient] = token_factory_client
     executor: Callable[[Settings, EventCallback], Executor] = make_executor
-    repo_source: Callable[[Settings], RepoSource] = _github_source
+    repo_source: Callable[[Settings], RepoSource] = github_source
 
 
 factories = Factories()
@@ -336,6 +322,30 @@ def _install_interrupt_handler(orchestrator: Orchestrator, console: Console) -> 
 
     signal.signal(signal.SIGINT, on_interrupt)
     return restore
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Interface to listen on.")] = "0.0.0.0",
+    port: Annotated[int, typer.Option("--port", help="Port to listen on.")] = 7860,
+) -> None:
+    """Start the web demo for judges (refuses dev settings unless FIXPROOF_ALLOW_DEV=1)."""
+    # Imported here so that the other commands do not pay for loading the web stack.
+    import uvicorn
+
+    from fixproof.web.app import create_app
+
+    settings = factories.settings()
+    try:
+        assert_demo_safe(settings)
+        web_app = create_app(settings=settings)
+    except ConfigError as exc:
+        _fail(str(exc), EXIT_INVALID_INPUT)
+    if settings.allow_dev:
+        Console(stderr=True).print(
+            "DEV ONLY: FIXPROOF_ALLOW_DEV=1 is set; never use it for the public demo.", markup=False
+        )
+    uvicorn.run(web_app, host=host, port=port)
 
 
 @app.command()

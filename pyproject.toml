@@ -69,12 +69,16 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-markers = ["live: requires Nebius credentials (set FIXPROOF_LIVE=1)"]
+markers = [
+    "live: requires Nebius credentials (set FIXPROOF_LIVE=1)",
+    "docker: requires a local Docker daemon (set FIXPROOF_DOCKER=1)",
+]
 
 [dependency-groups]
 dev = [
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.0",
 ]

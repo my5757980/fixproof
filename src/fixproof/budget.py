@@ -68,6 +68,10 @@ class BudgetTracker:
         self.cost_usd = 0.0
         self.usage: dict[str, ModelUsage] = {}
 
+    def restart_clock(self) -> None:
+        """Start measuring wall time now (a run may wait in a queue before it starts)."""
+        self._started = self._clock()
+
     @property
     def seconds_elapsed(self) -> float:
         """Wall-clock seconds since the run (or the parent run) started."""

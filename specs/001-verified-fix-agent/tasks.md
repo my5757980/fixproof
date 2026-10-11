@@ -538,6 +538,10 @@ reproduction test passes (quickstart.md §3).
   1. first with `FIXPROOF_EXECUTOR=docker` (dev);
   2. then with `ContreeExecutor` as soon as access exists.
 
+  *Status 2026-10-11*: the Docker side is validated end to end with a scripted model
+  (`tests/live/test_docker_end_to_end.py`, verified in real containers). Real-model runs wait for
+  a Token Factory key.
+
   Confirm the Verified label and the independent re-check (SC-002). Log any friction in
   `docs/feedback.md`.
 
@@ -559,7 +563,7 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
 
 ### Tests for User Story 2 (REQUIRED for agent-loop-facing changes) ⚠️
 
-- [ ] T055 [P] [US2] Write the web API integration tests `tests/integration/test_web_api.py`
+- [X] T055 [P] [US2] Write the web API integration tests `tests/integration/test_web_api.py`
   with `httpx.AsyncClient` + `ASGITransport` and the fakes. They cover:
   - `POST /api/runs` returns 202, and the SSE stream delivers ordered events ending with
     `run_finished`;
@@ -574,10 +578,10 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
   - `/api/health` fields;
   - every replay stream event has `replay: true`;
   - no endpoint applies patches or opens pull requests (FR-016).
-- [ ] T056 [P] [US2] Write the contract test `tests/contract/test_openapi_contract.py`. Every
+- [X] T056 [P] [US2] Write the contract test `tests/contract/test_openapi_contract.py`. Every
   path, method, and `operationId` in `specs/001-verified-fix-agent/contracts/openapi.yaml` must
   exist in the FastAPI app with the documented status codes.
-- [ ] T057 [P] [US2] Write the `RunManager` unit tests `tests/unit/test_run_manager.py`. They
+- [X] T057 [P] [US2] Write the `RunManager` unit tests `tests/unit/test_run_manager.py`. They
   cover:
   - at most `FIXPROOF_DEMO_MAX_CONCURRENT` live runs, with queue positions;
   - the per-visitor allowance resets daily (hashed IP key);
@@ -589,7 +593,7 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
 
 ### Implementation for User Story 2
 
-- [ ] T058 [US2] Implement `RunManager` in `src/fixproof/web/runs.py`:
+- [X] T058 [US2] Implement `RunManager` in `src/fixproof/web/runs.py`:
   - a FIFO queue with an asyncio semaphore;
   - a per-visitor allowance (a SHA-256 of the client IP, using `X-Forwarded-For` when present);
   - `DailyBudget`, persisted to `<FIXPROOF_STATE_DIR>/_budget.json` (default `runs/`), with a
@@ -601,7 +605,7 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
   - the replay catalog (`replays/index.toml`);
   - `stop(run_id)`;
   - the run registry, which keeps the last 200 runs on disk.
-- [ ] T059 [US2] Implement the FastAPI app in `src/fixproof/web/app.py` per
+- [X] T059 [US2] Implement the FastAPI app in `src/fixproof/web/app.py` per
   `contracts/openapi.yaml`:
   - SSE via `StreamingResponse(media_type="text/event-stream")` with `event:`, `id:`, and `data:`
     lines, plus `Last-Event-ID` support;
@@ -614,7 +618,10 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
 - [ ] T060 [P] [US2] Create `src/fixproof/web/samples.toml` with at least 3 curated one-click
   sample tasks (FR-019). Each has `id`, `title`, `repo_url`, `ref`, `task`, `expected_minutes`,
   and an optional `image_tag`, chosen from the tasks in `bench/tasks.toml` that verified in T054.
-- [ ] T061 [P] [US2] Build the static UI in `src/fixproof/web/static/index.html`,
+
+  *Status 2026-10-11*: `samples.toml` is seeded with the 3 benchmark tasks; confirm the
+  selection once T054 has run them for real.
+- [X] T061 [P] [US2] Build the static UI in `src/fixproof/web/static/index.html`,
   `src/fixproof/web/static/app.js`, and `src/fixproof/web/static/style.css`, with no framework:
   - a sample picker and a repo/task form with client-side validation;
   - a live timeline with:
@@ -630,9 +637,9 @@ offers a labeled REPLAY (quickstart.md §4; SC-003, SC-006).
   - a prominent **REPLAY** banner;
   - limit and paused messages that offer a replay;
   - accessible markup (labels, focus states, `aria-live` timeline) and a responsive layout.
-- [ ] T062 [US2] Add `fixproof serve --host --port` to `src/fixproof/cli.py` (uvicorn; calls
+- [X] T062 [US2] Add `fixproof serve --host --port` to `src/fixproof/cli.py` (uvicorn; calls
   `assert_demo_safe()`, which refuses dev settings unless `FIXPROOF_ALLOW_DEV=1`).
-- [ ] T063 [P] [US2] Create the demo `Dockerfile` and `.dockerignore`:
+- [X] T063 [P] [US2] Create the demo `Dockerfile` and `.dockerignore`:
   - base `python:3.12-slim`;
   - copy `uv`, run `uv sync --frozen --no-dev`;
   - non-root user;

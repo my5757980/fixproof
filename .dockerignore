@@ -1,0 +1,22 @@
+# Keep secrets, local state, and development files out of the demo image's build context.
+.env
+.env.*
+!.env.example
+runs/
+.venv/
+.playwright-mcp/
+.git/
+.claude/
+.specify/
+history/
+specs/
+tests/
+docs/
+bench/results/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+Dockerfile
+.dockerignore

@@ -129,6 +129,7 @@ class RunRequest:
     task: Task
     ref: str | None = None
     origin: Literal["cli", "web", "bench"] = "cli"
+    base_image: str | None = None  # overrides FIXPROOF_BASE_IMAGE (e.g. a task's Python version)
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,7 @@ class Orchestrator:
         self._stop_requested = False
         self._stop_reason: StopReason | None = None
         self._initial_plan: asyncio.Task[Plan] | None = None
+        self._base_image = settings.base_image
         self._plan: Plan = prompts.DEFAULT_PLAN
         self._paths: list[str] = []
         self._installed: Snapshot | None = None
@@ -255,11 +257,14 @@ class Orchestrator:
             started_at=utc_now(),
         )
         self._run = run
+        self._budget.restart_clock()  # time spent waiting in a demo queue does not count
+        self._base_image = request.base_image or self._settings.base_image
         redactor = Redactor(self._settings.secret_values())
         writer = TraceWriter.for_run(self._runs_dir, self.run_id, redactor=redactor).attach(
             self.bus
         )
-        main = asyncio.create_task(self._pipeline(location, request))
+        self._publish_run_started(request)  # always first, even for a run stopped before it began
+        main = asyncio.create_task(self._pipeline(location))
         self._main = main
         if self._stop_requested:
             main.cancel()
@@ -284,9 +289,8 @@ class Orchestrator:
 
     # -- pipeline ------------------------------------------------------------------------
 
-    async def _pipeline(self, location: RepoLocation, request: RunRequest) -> None:
+    async def _pipeline(self, location: RepoLocation) -> None:
         try:
-            self._publish_run_started(request)
             await self._setting_up(location)
             for phase in (
                 self._baseline_phase,
@@ -359,7 +363,7 @@ class Orchestrator:
                 self._paths, lambda path: read_tarball_text(tarball, path)
             )
             self._budget.check(steps=False)
-            source = await self._executor.prepare_repo(tarball, self._settings.base_image)
+            source = await self._executor.prepare_repo(tarball, self._base_image)
         source = await self._key_snapshot(source, "source")
 
         installed = await self._install(source, commands)

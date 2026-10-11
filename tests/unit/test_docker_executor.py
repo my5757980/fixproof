@@ -128,3 +128,13 @@ async def test_list_dir_parses_find_output() -> None:
         ("pkg", "dir", 0),
         ("pkg/b.py", "file", 3),
     ]
+
+
+async def test_close_removes_the_snapshots_and_tags_it_created() -> None:
+    executor, docker = make()
+    _, after = await executor.run(SNAPSHOT, "pip install -e .", timeout_s=600, mutate=True)
+    await executor.tag(after, "fixproof/run-20261011-000000-abcdef/installed")
+    await executor.close()
+    removed = [call[3] for call in docker.commands("rmi")]
+    assert removed == ["fixproof/run-20261011-000000-abcdef/installed:latest", after.image_id]
+    assert SNAPSHOT.image_id not in removed  # the base image is never removed

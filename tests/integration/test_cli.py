@@ -206,3 +206,23 @@ def test_replay_of_a_missing_file_exits_2(tmp_path: Path) -> None:
 def test_version() -> None:
     result = invoke("--version")
     assert result.exit_code == 0 and result.stdout.startswith("fixproof ")
+
+
+def test_serve_refuses_dev_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    settings = make_settings(executor="docker", state_dir=tmp_path)
+    monkeypatch.setattr(cli, "factories", Factories(settings=lambda: settings))
+    result = invoke("serve")
+    assert result.exit_code == 2
+    assert "FIXPROOF_EXECUTOR=docker" in result.stderr
+
+
+def test_serve_starts_the_web_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import uvicorn
+
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
+    settings = make_settings(state_dir=tmp_path)
+    monkeypatch.setattr(cli, "factories", Factories(settings=lambda: settings))
+    result = invoke("serve", "--host", "127.0.0.1", "--port", "8123")
+    assert result.exit_code == 0, result.output
+    assert calls == [{"host": "127.0.0.1", "port": 8123}]
