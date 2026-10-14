@@ -80,7 +80,7 @@ from fixproof.sandbox.executor import (
     git_baseline_command,
 )
 from fixproof.sandbox.pytest_results import TestRunner
-from fixproof.sandbox.recipes import detect_install_commands
+from fixproof.sandbox.recipes import detect_install_commands, pin_command
 from fixproof.tools.handlers import ToolContext, ToolPhase, WebSearch, forbidden_reason
 from fixproof.tools.registry import build_registry
 from fixproof.tools.schemas import FinishArgs
@@ -136,6 +136,7 @@ class RunRequest:
     mode: RunMode = RunMode.SINGLE
     max_parallel: int = 3  # parallel mode: branches at once (1-3)
     exhaustive: bool = False  # parallel mode: keep running branches after the first verified one
+    extra_packages: tuple[str, ...] = ()  # pins installed after the recipe (benchmark tasks)
 
 
 @dataclass(frozen=True)
@@ -226,6 +227,7 @@ class Orchestrator:
         self._mode = RunMode.SINGLE
         self._max_parallel = 3
         self._exhaustive = False
+        self._extra_packages: tuple[str, ...] = ()
         self._hypotheses: list[Hypothesis] | None = None
         self._hypothesis_rows: list[HypothesisRow] = []
 
@@ -274,6 +276,7 @@ class Orchestrator:
         self._mode = request.mode
         self._max_parallel = max(1, min(request.max_parallel, self._limits.max_parallel))
         self._exhaustive = request.exhaustive
+        self._extra_packages = request.extra_packages
         redactor = Redactor(self._settings.secret_values())
         writer = TraceWriter.for_run(self._runs_dir, self.run_id, redactor=redactor).attach(
             self.bus
@@ -377,6 +380,8 @@ class Orchestrator:
             commands = detect_install_commands(
                 self._paths, lambda path: read_tarball_text(tarball, path)
             )
+            if self._extra_packages:
+                commands.append(pin_command(self._extra_packages))
             self._budget.check(steps=False)
             source = await self._executor.prepare_repo(tarball, self._base_image)
         source = await self._key_snapshot(source, "source")

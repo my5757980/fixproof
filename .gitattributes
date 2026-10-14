@@ -1,0 +1,4 @@
+# Keep LF line endings in every checkout (the code runs in Linux sandboxes and containers).
+* text=auto eol=lf
+# Official test patches are applied byte for byte; never convert their line endings.
+bench/hidden/*.patch -text

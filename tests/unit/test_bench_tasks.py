@@ -27,13 +27,32 @@ def test_seeded_tasks_are_valid() -> None:
             assert node_id not in task.task.value, f"{task.id} shows a hidden test"
 
 
-def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
-    entry = (
-        '[[tasks]]\nid = "x"\nrepo_url = "https://github.com/a/b"\nbase_commit = "'
+def entry(task_id: str = "x", extra: str = "") -> str:
+    return (
+        f'[[tasks]]\nid = "{task_id}"\nrepo_url = "https://github.com/a/b"\nbase_commit = "'
         + "a" * 40
-        + '"\n[tasks.task]\nkind = "description"\nvalue = "bug"\n'
+        + f'"\n{extra}[tasks.task]\nkind = "description"\nvalue = "bug"\n'
     )
+
+
+def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
     path = tmp_path / "tasks.toml"
-    path.write_text(entry + entry, encoding="utf-8")
+    path.write_text(entry() + entry(), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate"):
+        load_benchmark_tasks(path)
+
+
+def test_hidden_test_patches_must_exist(tmp_path: Path) -> None:
+    path = tmp_path / "tasks.toml"
+    path.write_text(entry(extra='hidden_test_patch = "hidden/x.patch"\n'), encoding="utf-8")
+    with pytest.raises(ValueError, match="hidden test patch not found"):
+        load_benchmark_tasks(path)
+
+
+def test_pinned_packages_must_be_plain_requirements(tmp_path: Path) -> None:
+    path = tmp_path / "tasks.toml"
+    path.write_text(entry(extra='pip_packages = ["MarkupSafe==2.0.1"]\n'), encoding="utf-8")
+    assert load_benchmark_tasks(path)[0].pip_packages == ("MarkupSafe==2.0.1",)
+    path.write_text(entry(extra='pip_packages = ["x; rm -rf /"]\n'), encoding="utf-8")
+    with pytest.raises(ValueError, match="not a package requirement"):
         load_benchmark_tasks(path)

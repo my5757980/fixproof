@@ -7,12 +7,20 @@ alternative command if installation fails.
 
 from __future__ import annotations
 
+import re
 import shlex
 import tomllib
 from collections.abc import Callable, Sequence
 from typing import Any
 
 PIP = "python -m pip install --quiet --disable-pip-version-check"
+
+_SPECIFIER = r"(?:===|==|!=|<=|>=|~=|<|>)[A-Za-z0-9.*+!_-]+"
+_REQUIREMENT = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"  # name
+    r"(?:\[[A-Za-z0-9._-]+(?:,[A-Za-z0-9._-]+)*\])?"  # extras
+    rf"(?:{_SPECIFIER}(?:,{_SPECIFIER})*)?"  # version specifiers
+)
 
 _RUNTIME_REQUIREMENTS = ("requirements.txt",)
 _TEST_REQUIREMENTS = (
@@ -58,6 +66,27 @@ def detect_install_commands(paths: Sequence[str], read: Callable[[str], str]) ->
     )
     commands.append(f"{PIP} pytest")
     return commands
+
+
+def pin_command(packages: Sequence[str]) -> str:
+    """Return the command that installs pinned packages after the recipe.
+
+    Benchmark tasks on old commits use pins the way SWE-bench's environments do, because newer
+    releases of a dependency can break an old revision (for example ``MarkupSafe==2.0.1``).
+
+    Args:
+        packages: Plain requirements: a name, optional extras, and optional version specifiers.
+
+    Returns:
+        One ``pip install`` command with every requirement shell-quoted.
+
+    Raises:
+        ValueError: If a package is anything else (options, URLs, markers, shell syntax).
+    """
+    invalid = [package for package in packages if not _REQUIREMENT.fullmatch(package)]
+    if invalid or not packages:
+        raise ValueError(f"not a package requirement: {', '.join(map(repr, invalid))}")
+    return f"{PIP} " + " ".join(shlex.quote(package) for package in packages)
 
 
 def _project_install(present: set[str], read: Callable[[str], str]) -> str | None:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fixproof.sandbox.recipes import PIP, detect_install_commands
+import pytest
+
+from fixproof.sandbox.recipes import PIP, detect_install_commands, pin_command
 
 
 def reader(files: dict[str, str]) -> Callable[[str], str]:
@@ -102,3 +104,23 @@ def test_invalid_pyproject_falls_back_to_editable_install() -> None:
 
 def test_empty_repository_installs_only_pytest() -> None:
     assert detect({}) == [f"{PIP} pytest"]
+
+
+def test_pins_become_one_quoted_install_command() -> None:
+    command = pin_command(["MarkupSafe==2.0.1", "Werkzeug>=2.0,<3", "uvicorn[standard]~=0.20"])
+    assert command == f"{PIP} MarkupSafe==2.0.1 'Werkzeug>=2.0,<3' 'uvicorn[standard]~=0.20'"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "x; rm -rf /",
+        "--index-url=https://example.com",
+        "pkg @ https://example.com/pkg.whl",
+        "pkg==1.0 ; python_version<'3.9'",
+        "",
+    ],
+)
+def test_pins_accept_only_plain_requirements(bad: str) -> None:
+    with pytest.raises(ValueError, match="not a package requirement"):
+        pin_command([bad])

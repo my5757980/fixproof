@@ -21,6 +21,7 @@ from fixproof.models import (
     TaskKind,
 )
 from fixproof.sandbox.executor import CommandResult
+from fixproof.sandbox.recipes import PIP
 from fixproof.trace import read_trace
 from tests.fakes.calc_repo import (
     CALC_FILES,
@@ -461,3 +462,13 @@ async def test_q_a_request_can_choose_its_base_image(tmp_runs_dir: Path) -> None
     default = make_scenario(tmp_runs_dir)
     await default.run()
     assert default.executor.base_images == ["python:3.12"]
+
+
+async def test_r_pinned_packages_are_installed_after_the_recipe(tmp_runs_dir: Path) -> None:
+    s = make_scenario(tmp_runs_dir)
+    await s.orchestrator.run(
+        RunRequest(repo_url=REPO_URL, task=ISSUE_TASK, extra_packages=("MarkupSafe==2.0.1",))
+    )
+
+    installs = [e.data["command"] for e in s.events(EventType.INSTALL_RESULT)]
+    assert installs[-2:] == [f"{PIP} pytest", f"{PIP} MarkupSafe==2.0.1"]

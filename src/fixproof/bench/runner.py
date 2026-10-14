@@ -282,6 +282,7 @@ class BenchRunner:
             base_image=_image(task),
             mode=mode,
             max_parallel=parallel,
+            extra_packages=task.pip_packages,
         )
         try:
             run = await orchestrator.run(request)
@@ -481,7 +482,8 @@ class BenchRunner:
     def _test_patch(self, task: BenchmarkTask) -> str | None:
         if not task.hidden_test_patch:
             return None
-        return (self._tasks_file.parent / task.hidden_test_patch).read_text(encoding="utf-8")
+        # Bytes, not text mode: a patch may change files with CRLF line endings.
+        return (self._tasks_file.parent / task.hidden_test_patch).read_bytes().decode("utf-8")
 
 
 # -- helpers -------------------------------------------------------------------------------

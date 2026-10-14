@@ -10,6 +10,7 @@ import tomllib
 from pathlib import Path
 
 from fixproof.models import BenchmarkTask
+from fixproof.sandbox.recipes import pin_command
 
 
 def load_benchmark_tasks(path: Path) -> list[BenchmarkTask]:
@@ -33,4 +34,9 @@ def load_benchmark_tasks(path: Path) -> list[BenchmarkTask]:
     for task in tasks:
         if task.hidden_test_patch and not (path.parent / task.hidden_test_patch).is_file():
             raise ValueError(f"{task.id}: hidden test patch not found: {task.hidden_test_patch}")
+        if task.pip_packages:
+            try:
+                pin_command(task.pip_packages)
+            except ValueError as exc:
+                raise ValueError(f"{task.id}: {exc}") from exc
     return tasks

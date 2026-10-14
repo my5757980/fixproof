@@ -119,6 +119,26 @@ async def test_hidden_tests_never_reach_the_model_or_the_agents_sandbox(tmp_path
     assert "test_add_hidden" not in trace
 
 
+async def test_pinned_packages_reach_the_run_and_the_fresh_check(tmp_path: Path) -> None:
+    tasks_file = write_tasks(tmp_path)
+    text = tasks_file.read_text(encoding="utf-8")
+    tasks_file.write_text(
+        text.replace('python = "3.12"', 'python = "3.12"\npip_packages = ["MarkupSafe==2.0.1"]'),
+        encoding="utf-8",
+    )
+    fakes = Fakes((happy_planner(), happy_worker()))
+    bench = BenchRunner(
+        settings=make_settings(),
+        services=fakes.services(),
+        out_dir=tmp_path / "out",
+        tasks_file=tasks_file,
+    )
+    [row] = (await bench.run(load_benchmark_tasks(tasks_file))).rows
+    assert row.label is OutcomeLabel.VERIFIED and row.check_error is None
+    for executor in fakes.executors:  # the agent's run, then the fresh environment
+        assert any(c.command.endswith(" MarkupSafe==2.0.1") for c in executor.commands)
+
+
 async def test_an_overfitted_fix_is_verified_but_disagrees_with_the_hidden_tests(
     tmp_path: Path,
 ) -> None:
