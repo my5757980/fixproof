@@ -229,3 +229,24 @@ async def test_parallel_mode_is_capped_at_three_branches(tmp_path: Path) -> None
     view = manager.view(created.run_id)
     assert view is not None and view["label"] == "verified"
     await manager.shutdown()
+
+
+async def test_a_sample_brings_its_image_and_pinned_packages(tmp_path: Path) -> None:
+    sample = SAMPLE.model_copy(
+        update={"image_tag": "python:3.11", "pip_packages": ("MarkupSafe==2.0.1",)}
+    )
+    fakes = Fakes()
+    manager = RunManager(
+        make_settings(state_dir=tmp_path / "state"),
+        factories=fakes.factories(),
+        samples=[sample],
+        replays_dir=tmp_path / "replays",
+        today=Day(),
+    )
+    created = await manager.create(SAMPLE_RUN, "192.0.2.41")
+    managed = manager.get(created.run_id)
+    assert managed is not None and managed.request.extra_packages == ("MarkupSafe==2.0.1",)
+    await finish_all(manager)
+    assert fakes.executors[0].base_images == ["python:3.11"]
+    assert any(c.command.endswith(" MarkupSafe==2.0.1") for c in fakes.executors[0].commands)
+    await manager.shutdown()

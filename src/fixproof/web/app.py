@@ -26,6 +26,7 @@ from fixproof.config import Settings, load_settings
 from fixproof.events import TraceEvent
 from fixproof.models import SampleTask
 from fixproof.sandbox.factory import assert_demo_safe
+from fixproof.sandbox.recipes import pin_command
 from fixproof.trace import replay as replay_trace
 from fixproof.web.runs import (
     DemoError,
@@ -98,9 +99,17 @@ def _error(*statuses: int) -> dict[int | str, dict[str, Any]]:
 
 
 def load_samples(path: Path = SAMPLES_FILE) -> list[SampleTask]:
-    """Load the curated samples (``[[samples]]`` tables)."""
+    """Load the curated samples (``[[samples]]`` tables).
+
+    Raises:
+        ValueError: If a sample is invalid, including a pin that is not a plain requirement.
+    """
     data = tomllib.loads(path.read_text(encoding="utf-8"))
-    return [SampleTask.model_validate(item) for item in data.get("samples", [])]
+    samples = [SampleTask.model_validate(item) for item in data.get("samples", [])]
+    for sample in samples:
+        if sample.pip_packages:
+            pin_command(sample.pip_packages)
+    return samples
 
 
 def client_ip(request: Request) -> str:

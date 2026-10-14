@@ -64,8 +64,9 @@ releasing FixProof under MIT. FixProof vendors no third-party code.
 ## Benchmark data
 
 - The tasks in `bench/tasks.toml` come from SWE-bench Verified
-  (`princeton-nlp/SWE-bench_Verified`, MIT License): instance IDs, base commits, issue text,
-  and the lists of hidden tests.
+  (`princeton-nlp/SWE-bench_Verified`) and the SWE-bench test split (`princeton-nlp/SWE-bench`),
+  both under the MIT License: instance IDs, base commits, issue text, and the lists of hidden
+  tests.
 - The files in `bench/hidden/` are the official test patches of those fixes, taken from the
   projects themselves and kept under the projects' licenses: Requests (Apache-2.0) and Flask
   (BSD-3-Clause).

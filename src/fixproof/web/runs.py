@@ -544,6 +544,7 @@ class RunManager:
                 base_image=sample.image_tag,
                 mode=mode,
                 max_parallel=max_parallel,
+                extra_packages=sample.pip_packages,
             )
             return request, True
         if payload.repo_url is None or payload.task is None:

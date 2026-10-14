@@ -200,9 +200,11 @@ it.
 ## Benchmark
 
 `bench/tasks.toml` holds real, already-fixed bugs from public Python repositories, taken from
-SWE-bench Verified. The agent sees only the issue text and the repository at the commit before
-the official fix. After each run, the benchmark sets up a fresh sandbox with the run's own
-install commands and:
+SWE-bench. The agent sees only the issue text and the repository at the commit before the
+official fix. Some old revisions break with today's releases of their dependencies, so a task
+can pin a few packages (`pip_packages`), installed after FixProof's normal install recipe, as
+SWE-bench's own environments do. After each run, the benchmark sets up a fresh sandbox with the
+run's own install commands and:
 
 - re-runs the evidence of every **Verified** fix there (a verified fix must never fail this
   re-check);
@@ -316,6 +318,9 @@ FixProof has no telemetry.
   (the demo accepts up to 50 MB), are out of scope.
 - Projects whose version comes from git tags (for example setuptools-scm) may fail to install
   from a source tarball.
+- FixProof installs the newest dependency versions that a project's own files allow. Old
+  revisions with loose requirements can break with today's releases; the install step then
+  fails or the test suite cannot start.
 - The reproduction test is written by the agent; a weak reproduction can make a fix look
   better than it is. The hidden-test agreement in the benchmark measures this.
 - A fix is verified against the repository's own tests in a sandbox; it is a strong signal,
@@ -328,7 +333,7 @@ MIT License (see [LICENSE](LICENSE)); dependency licenses are listed in
 
 - Models: NVIDIA Nemotron 3 Ultra, Nemotron 3 Super, and Nemotron 3 Nano, used through Nebius
   Token Factory under NVIDIA's license terms for each model.
-- Benchmark tasks: SWE-bench Verified (MIT License).
+- Benchmark tasks: SWE-bench and SWE-bench Verified (MIT License).
 
 **Built With**: Nebius Token Factory, Token Factory Sandboxes, NVIDIA Nemotron 3 Ultra,
 NVIDIA Nemotron 3 Super, NVIDIA Nemotron 3 Nano, Python, FastAPI, Typer, Pydantic, uv.

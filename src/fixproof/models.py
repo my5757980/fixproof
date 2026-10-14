@@ -386,7 +386,11 @@ class Run(BaseModel):
 
 
 class SampleTask(BaseModel):
-    """A curated one-click task for the judge demo (FR-019)."""
+    """A curated one-click task for the judge demo (FR-019).
+
+    ``image_tag`` and ``pip_packages`` (pins installed after the recipe) set up the sample's
+    environment, as for benchmark tasks.
+    """
 
     model_config = _FROZEN
 
@@ -396,6 +400,7 @@ class SampleTask(BaseModel):
     ref: str | None = None
     task: Task
     image_tag: str | None = None
+    pip_packages: tuple[str, ...] = ()
     expected_minutes: int = Field(ge=1)
 
 
