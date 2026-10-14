@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Collection
 from pathlib import Path, PurePosixPath
 
 _HEADER_PREFIXES = ("--- ", "+++ ")
 _RENAME_PREFIXES = ("rename from ", "rename to ", "copy from ", "copy to ")
 _DRIVE = re.compile(r"^[A-Za-z]:")
+_FILE_SECTION = re.compile(r"(?m)^(?=diff --git )")
 
 
 def patch_paths(diff: str) -> list[str]:
@@ -32,6 +34,20 @@ def patch_paths(diff: str) -> list[str]:
         elif line.startswith(_RENAME_PREFIXES):
             paths.append("b/" + line.split(" ", 2)[2])
     return paths
+
+
+def changed_files(diff: str) -> list[str]:
+    """Return the repository paths a git diff changes, in order and without duplicates."""
+    found: dict[str, None] = {}
+    for raw in patch_paths(diff):
+        found[raw[2:] if raw.startswith(("a/", "b/")) else raw] = None
+    return list(found)
+
+
+def drop_files(diff: str, paths: Collection[str]) -> str:
+    """Return a git diff without the file sections that change any of ``paths``."""
+    sections = _FILE_SECTION.split(diff)
+    return "".join(s for s in sections if s and not set(changed_files(s)) & set(paths))
 
 
 def validate_patch(diff: str, target: Path) -> list[str]:

@@ -402,7 +402,8 @@ class SampleTask(BaseModel):
 class BenchmarkTask(BaseModel):
     """A real, already-fixed bug used only for measurement (FR-023).
 
-    The hidden tests are never shown to the agent.
+    The hidden tests, and the official test patch that adds them, are never shown to the agent.
+    ``hidden_test_patch`` is a path relative to the task file.
     """
 
     model_config = _FROZEN
@@ -413,5 +414,6 @@ class BenchmarkTask(BaseModel):
     task: Task
     hidden_fail_to_pass: tuple[str, ...] = ()
     hidden_pass_to_pass: tuple[str, ...] = ()
+    hidden_test_patch: str | None = None
     image_tag: str | None = None
     python: str = "3.12"

@@ -221,5 +221,6 @@ queued → setting_up → baseline → planning → reproducing → fixing ⇄ v
 | `repo_url`, `base_commit` | `str` | Revision before the official fix |
 | `task` | `Task` | Usually `issue` text |
 | `hidden_fail_to_pass`, `hidden_pass_to_pass` | `list[str]` | **Never** given to the agent |
+| `hidden_test_patch` | `str \| None` | Path, relative to the task file, of the official test patch that adds the hidden tests. Applied only after a run ends, in a fresh environment, never in the agent's sandbox |
 | `image_tag` | `str \| None` | Preloaded or pre-built sandbox image |
 | `python` | `str` | Default `3.12` |

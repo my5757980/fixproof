@@ -777,13 +777,13 @@ documentation, and the hackathon submission package.
 - [X] T076 Implement the optional `web_search` handler (Tavily `POST https://api.tavily.com/search`,
   research.md R12) in `src/fixproof/tools/handlers.py` and register it conditionally in
   `src/fixproof/tools/registry.py`.
-- [ ] T077 [P] Write `tests/integration/test_bench_runner.py` with the fakes. It checks that:
+- [X] T077 [P] Write `tests/integration/test_bench_runner.py` with the fakes. It checks that:
   - hidden tests never appear in any model request;
   - results JSON has the per-task label, time, cost, independent re-check, and
     hidden-test agreement;
   - the summary table math is correct;
   - `--compare-single` produces paired rows.
-- [ ] T078 Implement the benchmark runner in `src/fixproof/bench/runner.py`:
+- [X] T078 Implement the benchmark runner in `src/fixproof/bench/runner.py`:
   - load `bench/tasks.toml` with `tomllib`;
   - run each task through the orchestrator;
   - re-check every verified run independently on a fresh snapshot (SC-002);

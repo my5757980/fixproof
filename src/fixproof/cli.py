@@ -23,6 +23,16 @@ from rich.console import Console
 from fixproof import __version__
 from fixproof.agent.orchestrator import Orchestrator, RunRequest, new_event_bus
 from fixproof.agent.report import evidence_lines, pull_request_body
+from fixproof.bench.runner import (
+    BenchRunner,
+    BenchServices,
+    default_results_dir,
+    load_results,
+    paired_rows,
+    render_summary,
+    summaries,
+)
+from fixproof.bench.tasks import load_benchmark_tasks
 from fixproof.config import ConfigError, Settings, load_settings
 from fixproof.events import EventType, TraceEvent
 from fixproof.llm.client import ModelClient
@@ -590,6 +600,101 @@ async def _open_pull_request(settings: Settings, **arguments: Any) -> str:
         return await open_fix_pull_request(client, **arguments)
     finally:
         await client.aclose()
+
+
+bench_app = typer.Typer(
+    help="Run the benchmark of real, already-fixed bugs (FR-023) and summarize the results.",
+    no_args_is_help=True,
+)
+app.add_typer(bench_app, name="bench")
+
+
+@bench_app.command("run")
+def bench_run(
+    tasks: Annotated[Path, typer.Option("--tasks", help="Benchmark task file.")] = Path(
+        "bench/tasks.toml"
+    ),
+    only: Annotated[
+        str | None, typer.Option("--only", help="Comma-separated task IDs to run.")
+    ] = None,
+    parallel: Annotated[
+        int,
+        typer.Option("--parallel", min=1, max=3, help="Hypotheses per run (1 = single path)."),
+    ] = 1,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Results folder (default bench/results/<date>)."),
+    ] = None,
+    compare_single: Annotated[
+        bool,
+        typer.Option("--compare-single", help="Also run every task single-path (SC-007)."),
+    ] = False,
+) -> None:
+    """Run every benchmark task, re-check each verified fix, and write the results."""
+    try:
+        BenchRunner.check_options(parallel=parallel, compare_single=compare_single)
+        task_list = load_benchmark_tasks(tasks)
+    except (OSError, ValueError) as exc:
+        _fail(str(exc), EXIT_INVALID_INPUT)
+    if only:
+        wanted = [task_id.strip() for task_id in only.split(",") if task_id.strip()]
+        unknown = sorted(set(wanted) - {task.id for task in task_list})
+        if unknown:
+            _fail(f"unknown task IDs: {', '.join(unknown)}", EXIT_INVALID_INPUT)
+        task_list = [task for task in task_list if task.id in wanted]
+    settings = factories.settings()
+    console = Console(soft_wrap=True, highlight=False)
+    if settings.is_dev_endpoint():
+        console.print(
+            "DEV ONLY: NEBIUS_BASE_URL does not point at Nebius Token Factory.", markup=False
+        )
+    out_dir = out or default_results_dir()
+    bench = BenchRunner(
+        settings=settings,
+        services=BenchServices(
+            model=factories.model,
+            executor=factories.executor,
+            repo_source=factories.repo_source,
+            web_search=factories.web_search,
+        ),
+        out_dir=out_dir,
+        tasks_file=tasks,
+        on_progress=lambda line: console.print(line, markup=False),
+    )
+    try:
+        settings.require_api_key()
+        results = asyncio.run(
+            bench.run(task_list, parallel=parallel, compare_single=compare_single)
+        )
+    except ConfigError as exc:
+        _fail(str(exc), EXIT_INVALID_INPUT)
+    except Exception as exc:  # pragma: no cover - last-resort guard for unexpected failures
+        _fail(f"{type(exc).__name__}: {exc}", EXIT_INTERNAL_ERROR)
+    console.print(markup=False)
+    console.print(render_summary(results), markup=False)
+    console.print(f"Results: {out_dir / 'results.json'}", markup=False)
+
+
+@bench_app.command("report")
+def bench_report(
+    results_dir: Annotated[Path, typer.Argument(help="A benchmark results folder.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print the summaries as JSON.")
+    ] = False,
+) -> None:
+    """Summarize a results folder as a Markdown table for the README."""
+    try:
+        results = load_results(results_dir)
+    except ValueError as exc:
+        _fail(str(exc), EXIT_INVALID_INPUT)
+    if json_output:
+        payload = {
+            "summaries": [s.model_dump(mode="json") for s in summaries(results)],
+            "pairs": [p.model_dump(mode="json") for p in paired_rows(results.rows)],
+        }
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    typer.echo(render_summary(results), nl=False)
 
 
 @dataclass(frozen=True)

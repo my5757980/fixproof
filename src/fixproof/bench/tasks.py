@@ -22,7 +22,7 @@ def load_benchmark_tasks(path: Path) -> list[BenchmarkTask]:
         The tasks, in file order.
 
     Raises:
-        ValueError: If a task is invalid or an ID repeats.
+        ValueError: If a task is invalid, an ID repeats, or a hidden test patch is missing.
     """
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     tasks = [BenchmarkTask.model_validate(item) for item in data.get("tasks", [])]
@@ -30,4 +30,7 @@ def load_benchmark_tasks(path: Path) -> list[BenchmarkTask]:
     duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
     if duplicates:
         raise ValueError(f"duplicate benchmark task IDs: {', '.join(duplicates)}")
+    for task in tasks:
+        if task.hidden_test_patch and not (path.parent / task.hidden_test_patch).is_file():
+            raise ValueError(f"{task.id}: hidden test patch not found: {task.hidden_test_patch}")
     return tasks
