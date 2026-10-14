@@ -798,10 +798,10 @@ documentation, and the hackathon submission package.
 - [ ] T080 Run the full benchmark from `bench/tasks.toml` live on Nebius, both single-path and
   `--compare-single` with parallel mode. Save the results in `bench/results/<date>/` and copy the
   summary table into `README.md` (SC-001, SC-002, SC-007).
-- [ ] T081 [P] Write the contract test `tests/contract/test_replays_redacted.py`. It scans every
+- [X] T081 [P] Write the contract test `tests/contract/test_replays_redacted.py`. It scans every
   `replays/*.jsonl` and `bench/results/**/results.json` for secret patterns and fails if any
   token-like value is present.
-- [ ] T082 [P] Add a "Dependencies and licenses" table to `docs/licenses.md`, using
+- [X] T082 [P] Add a "Dependencies and licenses" table to `docs/licenses.md`, using
   `uv pip list` and each package's license. Confirm every runtime dependency is MIT-compatible
   (Constitution I).
 - [ ] T083 Complete `README.md` per Constitution VI and the hackathon requirements:
@@ -852,7 +852,7 @@ documentation, and the hackathon submission package.
   - confirm the credits and keys stay valid through 2026-12-15 (SC-008).
 
   Record the results in `docs/submission-checklist.md`.
-- [ ] T089 Create `.github/workflows/uptime.yml`, a daily scheduled check (plus manual dispatch)
+- [X] T089 Create `.github/workflows/uptime.yml`, a daily scheduled check (plus manual dispatch)
   of `$FIXPROOF_DEMO_URL/api/health` from submission through 2026-12-15. It opens a GitHub issue
   when the demo is down or `live_runs_available` is false, keeping the demo reachable every day
   (SC-008).
