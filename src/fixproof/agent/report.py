@@ -237,6 +237,69 @@ def write_report_files(run_dir: Path, report: Report, markdown: str) -> None:
         )
 
 
+def evidence_lines(report: Report) -> list[str]:
+    """Summarize the label and test evidence in plain lines (for approval and pull requests)."""
+    lines = [f"Label: {LABEL_TEXT[report.label]} ({STOP_TEXT[report.stop_reason]})"]
+    evidence = report.evidence
+    if evidence is not None:
+        lines.append(f"Baseline (before any change): {_plain_counts(evidence.baseline)}")
+        if evidence.repro_test_id:
+            origin = "written by the agent" if evidence.repro_created else "from the task"
+            passes = repro_passes(evidence)
+            after = ", ".join("pass" if ok else "fail" for ok in passes) or "not run"
+            lines.append(
+                f"Reproduction test: {evidence.repro_test_id} ({origin}); fails before the fix; "
+                f"after the fix: {after}"
+            )
+        if evidence.regression is not None:
+            regressions = ", ".join(find_regressions(evidence)) or "none"
+            lines.append(
+                f"Full suite after the fix: {_plain_counts(evidence.regression)}; "
+                f"regressions: {regressions}"
+            )
+        modified = ", ".join(evidence.modified_test_files) or "none"
+        lines.append(f"Existing test files modified: {modified}")
+    if report.patch is not None and not report.patch.is_empty:
+        files = ", ".join(f"{f.path} (+{f.added} -{f.removed})" for f in report.patch.files)
+        lines.append(f"Changed files: {files}")
+    lines.extend(f"Flag: {flag}" for flag in report.flags)
+    return lines
+
+
+def pull_request_body(report: Report) -> str:
+    """Write the pull-request description from the report (FR-016)."""
+    sections = [
+        "## Summary",
+        "",
+        report.summary,
+        "",
+        "## Root cause",
+        "",
+        report.root_cause_md or "Not established.",
+        "",
+        "## Evidence",
+        "",
+        "Collected by FixProof in an isolated Token Factory sandbox:",
+        "",
+        *(f"- {line}" for line in evidence_lines(report)),
+        "",
+        "---",
+        "",
+        "_This pull request was prepared by FixProof, an AI agent (NVIDIA Nemotron models on "
+        "Nebius Token Factory). A person reviewed the diff and the evidence and approved opening "
+        "it. Please review it like any other contribution._",
+    ]
+    return "\n".join(sections) + "\n"
+
+
+def _plain_counts(run: TestRun) -> str:
+    c = run.counts
+    text = (
+        f"{c['passed']} passed, {c['failed']} failed, {c['error']} errors, {c['skipped']} skipped"
+    )
+    return text + (" (timed out)" if run.timed_out else "")
+
+
 def _cell(text: str) -> str:
     flat = " ".join(text.split()).replace("|", "\\|")
     return flat if len(flat) <= 160 else flat[:159] + "…"

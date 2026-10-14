@@ -1,12 +1,14 @@
-"""Command-line interface (contracts/cli.md): ``fix``, ``replay``, and ``doctor``.
+"""Command-line interface (contracts/cli.md): fix, replay, doctor, serve, apply, and pr.
 
 ``fix`` prints the plan before any edit and then one line per event. Ctrl+C stops the run
-within 10 seconds and still writes the partial report (exit code 30).
+within 10 seconds and still writes the partial report (exit code 30). ``apply`` and ``pr`` always
+show the full diff and the evidence and change nothing unless the user answers ``y`` or ``yes``.
 """
 
 import asyncio
 import json
 import signal
+import tempfile
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -20,19 +22,32 @@ from rich.console import Console
 
 from fixproof import __version__
 from fixproof.agent.orchestrator import Orchestrator, RunRequest, new_event_bus
+from fixproof.agent.report import evidence_lines, pull_request_body
 from fixproof.config import ConfigError, Settings, load_settings
 from fixproof.events import EventType, TraceEvent
 from fixproof.llm.client import ModelClient
-from fixproof.models import Budget, OutcomeLabel, Run, RunMode, StopReason, Task, TaskKind
-from fixproof.repo.github import GitHubError, RepoSource, parse_issue_url, parse_repo_url
+from fixproof.models import Budget, OutcomeLabel, Report, Run, RunMode, StopReason, Task, TaskKind
+from fixproof.repo.github import (
+    GitHubClient,
+    GitHubError,
+    RepoSource,
+    open_fix_pull_request,
+    parse_issue_url,
+    parse_repo_url,
+)
+from fixproof.repo.patches import git_apply, validate_patch
 from fixproof.sandbox.executor import Executor
 from fixproof.sandbox.factory import assert_demo_safe, make_executor
+from fixproof.trace import read_trace
 from fixproof.trace import replay as replay_trace
-from fixproof.wiring import github_source, token_factory_client
+from fixproof.wiring import github_client, github_source, token_factory_client
 
 EXIT_VERIFIED = 0
 EXIT_INTERNAL_ERROR = 1
 EXIT_INVALID_INPUT = 2
+EXIT_DECLINED = 3
+EXIT_PATCH_FAILED = 4
+EXIT_GITHUB_ERROR = 5
 EXIT_DOCTOR_PROBLEMS = 6
 EXIT_NEEDS_REVIEW = 10
 EXIT_NOT_VERIFIED = 20
@@ -59,6 +74,7 @@ class Factories:
     model: Callable[[Settings], ModelClient] = token_factory_client
     executor: Callable[[Settings, EventCallback], Executor] = make_executor
     repo_source: Callable[[Settings], RepoSource] = github_source
+    github: Callable[[Settings], GitHubClient] = github_client
 
 
 factories = Factories()
@@ -392,6 +408,180 @@ def replay(
         asyncio.run(play())
     except (ValueError, KeyError) as exc:
         _fail(f"not a FixProof trace: {exc}", EXIT_INVALID_INPUT)
+
+
+# -- taking the fix home (User Story 4, FR-016) ----------------------------------------------
+
+
+def _load_run(run_dir: Path) -> tuple[Report, str]:
+    """Return a run's report and patch text, or exit with a clear message."""
+    report_file, patch_file = run_dir / "report.json", run_dir / "patch.diff"
+    if not report_file.is_file():
+        _fail(f"{run_dir} is not a FixProof run folder (no report.json).", EXIT_INVALID_INPUT)
+    if not patch_file.is_file():
+        _fail(f"The run in {run_dir} produced no patch.", EXIT_INVALID_INPUT)
+    try:
+        report = Report.model_validate_json(report_file.read_text(encoding="utf-8"))
+    except ValidationError:
+        _fail(f"{report_file} is not a valid FixProof report.", EXIT_INVALID_INPUT)
+    if report.patch is None or report.patch.is_empty:
+        _fail(f"The run in {run_dir} produced no patch.", EXIT_INVALID_INPUT)
+    return report, patch_file.read_text(encoding="utf-8")
+
+
+def _check_label(report: Report, force_unverified: bool, console: Console) -> None:
+    """Refuse runs that are not verified unless the user insists (they still confirm)."""
+    if report.label is not OutcomeLabel.NOT_VERIFIED:
+        return
+    if not force_unverified:
+        _fail(
+            "This run is not verified. Use --force-unverified to continue anyway; you will "
+            "still see the change and be asked to confirm.",
+            EXIT_INVALID_INPUT,
+        )
+    console.print("WARNING: this run is NOT VERIFIED; tests did not prove the fix.", markup=False)
+
+
+def _show_change(console: Console, report: Report, diff: str) -> None:
+    """Show the evidence summary and the full diff before asking for approval."""
+    console.print("Evidence:", markup=False)
+    for line in evidence_lines(report):
+        console.print(f"  {line}", markup=False)
+    console.print("", markup=False)
+    console.print(diff.rstrip("\n"), markup=False)
+    console.print("", markup=False)
+
+
+def _approve() -> bool:
+    """Ask the fixed question; anything other than ``y`` or ``yes`` declines."""
+    try:
+        answer = typer.prompt("Apply this patch? [y/N]", default="", show_default=False)
+    except typer.Abort:
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def _run_origin(run_dir: Path) -> tuple[str, str]:
+    """Return the repository URL and the commit the run worked on, from its trace."""
+    trace_file = run_dir / "trace.jsonl"
+    repo_url = sha = None
+    if trace_file.is_file():
+        for event in read_trace(trace_file):
+            if event.type is EventType.RUN_STARTED:
+                repo_url = event.data.get("repo_url")
+            elif event.type is EventType.REPO_FETCHED:
+                sha = event.data.get("resolved_sha")
+    if not repo_url or not sha:
+        _fail(f"{run_dir} does not record the repository and commit it ran on.", EXIT_INVALID_INPUT)
+    return str(repo_url), str(sha)
+
+
+@app.command()
+def apply(
+    run_dir: Annotated[Path, typer.Argument(help="A run folder, for example runs/<run_id>.")],
+    to: Annotated[
+        Path, typer.Option("--to", help="Your local checkout at the run's revision.")
+    ] = Path("."),
+    force_unverified: Annotated[
+        bool,
+        typer.Option(
+            "--force-unverified", help="Allow a run that is not verified (you still confirm)."
+        ),
+    ] = False,
+) -> None:
+    """Apply a run's patch to your local checkout after you approve the exact diff."""
+    console = Console(soft_wrap=True, highlight=False)
+    report, diff = _load_run(run_dir)
+    if not to.is_dir():
+        _fail(f"{to} is not a folder.", EXIT_INVALID_INPUT)
+    _check_label(report, force_unverified, console)
+    problems = validate_patch(diff, to)
+    if problems:
+        _fail("The patch was rejected: " + "; ".join(problems), EXIT_PATCH_FAILED)
+    patch_file = run_dir / "patch.diff"
+    ok, message = git_apply(patch_file, to, check=True)
+    if not ok:
+        _fail(f"The patch does not apply to {to}: {message}", EXIT_PATCH_FAILED)
+    _show_change(console, report, diff)
+    if not _approve():
+        console.print("Declined. Nothing was changed.", markup=False)
+        raise typer.Exit(EXIT_DECLINED)
+    ok, message = git_apply(patch_file, to, check=False)
+    if not ok:
+        _fail(f"git apply failed: {message}", EXIT_PATCH_FAILED)
+    console.print(f"Applied to {to}. Review it with: git -C {to} diff", markup=False)
+
+
+@app.command()
+def pr(
+    run_dir: Annotated[Path, typer.Argument(help="A run folder, for example runs/<run_id>.")],
+    title: Annotated[str | None, typer.Option("--title", help="Pull request title.")] = None,
+    draft: Annotated[
+        bool, typer.Option("--draft/--no-draft", help="Open it as a draft (the default).")
+    ] = True,
+    force_unverified: Annotated[
+        bool,
+        typer.Option(
+            "--force-unverified", help="Allow a run that is not verified (you still confirm)."
+        ),
+    ] = False,
+) -> None:
+    """Open a pull request with a run's patch from your own GitHub account, after approval."""
+    console = Console(soft_wrap=True, highlight=False)
+    report, diff = _load_run(run_dir)
+    repo_url, base_sha = _run_origin(run_dir)
+    _check_label(report, force_unverified, console)
+    settings = factories.settings()
+    if settings.github_token is None or not settings.github_token.get_secret_value():
+        _fail(
+            "Set GITHUB_TOKEN to your own GitHub token (allowed to fork the repository and open "
+            "pull requests). FixProof never uses a shared token for this.",
+            EXIT_INVALID_INPUT,
+        )
+    with tempfile.TemporaryDirectory() as empty:
+        problems = validate_patch(diff, Path(empty))
+    if problems:
+        _fail("The patch was rejected: " + "; ".join(problems), EXIT_PATCH_FAILED)
+    pr_title = title or _default_title(report)
+    _show_change(console, report, diff)
+    kind = "draft pull request" if draft else "pull request"
+    console.print(
+        f"This opens a {kind} on {repo_url} from your GitHub account: {pr_title}", markup=False
+    )
+    if not _approve():
+        console.print("Declined. Nothing was sent to GitHub.", markup=False)
+        raise typer.Exit(EXIT_DECLINED)
+    assert report.patch is not None  # checked by _load_run
+    try:
+        url = asyncio.run(
+            _open_pull_request(
+                settings,
+                location=parse_repo_url(repo_url),
+                base_sha=base_sha,
+                run_id=report.run_id,
+                patch=report.patch,
+                title=pr_title,
+                body=pull_request_body(report),
+                draft=draft,
+            )
+        )
+    except GitHubError as exc:
+        _fail(f"GitHub did not accept the pull request: {exc}", EXIT_GITHUB_ERROR)
+    console.print(f"Opened {url}", markup=False)
+
+
+def _default_title(report: Report) -> str:
+    first_sentence = report.summary.strip().split("\n")[0].split(". ")[0].rstrip(".")
+    title = f"Fix: {first_sentence}" if first_sentence else f"FixProof fix ({report.run_id})"
+    return title if len(title) <= 72 else title[:71] + "…"
+
+
+async def _open_pull_request(settings: Settings, **arguments: Any) -> str:
+    client = factories.github(settings)
+    try:
+        return await open_fix_pull_request(client, **arguments)
+    finally:
+        await client.aclose()
 
 
 @dataclass(frozen=True)

@@ -724,7 +724,7 @@ revision; the tests pass. `fixproof apply` and `fixproof pr` change nothing when
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T071 [P] [US4] Write the integration tests `tests/integration/test_apply_pr.py`. They cover:
+- [X] T071 [P] [US4] Write the integration tests `tests/integration/test_apply_pr.py`. They cover:
   - `apply` shows the diff and evidence summary; answering `N` leaves a temporary git
     repository unchanged (exit code `3`), and `y` applies the patch;
   - `git apply --check` failure gives exit code `4`;
@@ -738,7 +738,7 @@ revision; the tests pass. `fixproof apply` and `fixproof pr` change nothing when
 
 ### Implementation for User Story 4
 
-- [ ] T072 [US4] Add a pull-request flow to `src/fixproof/repo/github.py`. It uses the **user's
+- [X] T072 [US4] Add a pull-request flow to `src/fixproof/repo/github.py`. It uses the **user's
   own** `GITHUB_TOKEN`:
   1. `POST /repos/{owner}/{repo}/forks` and wait until the fork is ready;
   2. create branch `fixproof/<run_id>` at the run's `resolved_sha`;
@@ -746,7 +746,7 @@ revision; the tests pass. `fixproof apply` and `fixproof pr` change nothing when
   4. `POST /repos/{owner}/{repo}/pulls` (draft, head `user:branch`).
 
   The body comes from the report. All errors are mapped to clear messages.
-- [ ] T073 [US4] Add two commands to `src/fixproof/cli.py`: `fixproof apply RUN_DIR --to PATH`
+- [X] T073 [US4] Add two commands to `src/fixproof/cli.py`: `fixproof apply RUN_DIR --to PATH`
   (path validation, `git apply --check`, then `git apply`) and
   `fixproof pr RUN_DIR --title --draft`.
   - Both always show the full diff and evidence summary and ask `Apply this patch? [y/N]`. There

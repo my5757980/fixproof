@@ -16,7 +16,12 @@ def token_factory_client(settings: Settings) -> ModelClient:
     return TokenFactoryClient(settings)
 
 
-def github_source(settings: Settings) -> RepoSource:
-    """Return the GitHub intake client, with the optional read-only ``GITHUB_TOKEN``."""
+def github_client(settings: Settings) -> GitHubClient:
+    """Return a GitHub client with ``GITHUB_TOKEN`` when it is set."""
     token = settings.github_token.get_secret_value() if settings.github_token else None
     return GitHubClient(token=token or None)
+
+
+def github_source(settings: Settings) -> RepoSource:
+    """Return the GitHub intake client, with the optional read-only ``GITHUB_TOKEN``."""
+    return github_client(settings)

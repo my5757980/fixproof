@@ -7,15 +7,21 @@ and never enters a sandbox. Errors carry the codes used by the web API contract.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import re
 import tarfile
+import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote
 
 import httpx
 
-from fixproof.models import RepoRef
+from fixproof.models import FileStatus, Patch, RepoRef
+from fixproof.repo.patches import git_apply, validate_patch
 
 GITHUB_API = "https://api.github.com"
 ISSUE_BODY_LIMIT = 8000
@@ -315,18 +321,138 @@ class GitHubClient:
         tree = data.get("tree") or []
         return [item["path"] for item in tree if item.get("type") == "blob"][:limit]
 
+    # -- pull requests (CLI only, with the user's own token; FR-016) ------------------------
+
+    async def authenticated_login(self) -> str:
+        """Return the login of the token's owner."""
+        data = await self._request("GET", "/user", not_found="github_error")
+        return str(data["login"])
+
+    async def create_fork(
+        self,
+        location: RepoLocation,
+        *,
+        attempts: int = 10,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> RepoLocation:
+        """Fork ``location`` into the token owner's account and wait until it is ready."""
+        data = await self._request(
+            "POST", f"/repos/{location.owner}/{location.name}/forks", not_found="invalid_repo"
+        )
+        fork = RepoLocation(str(data["owner"]["login"]), str(data["name"]))
+        for attempt in range(attempts):
+            try:
+                await self._request(
+                    "GET", f"/repos/{fork.owner}/{fork.name}", not_found="not_ready"
+                )
+                return fork
+            except GitHubError as exc:
+                if exc.code != "not_ready":
+                    raise
+            await sleep(min(2.0 * (attempt + 1), 10.0))
+        raise GitHubError(
+            "github_error", f"The fork {fork.owner}/{fork.name} did not become ready."
+        )
+
+    async def create_branch(self, location: RepoLocation, branch: str, sha: str) -> None:
+        """Create ``branch`` at commit ``sha``."""
+        await self._request(
+            "POST",
+            f"/repos/{location.owner}/{location.name}/git/refs",
+            json={"ref": f"refs/heads/{branch}", "sha": sha},
+            not_found="invalid_repo",
+        )
+
+    async def get_file(
+        self, location: RepoLocation, path: str, ref: str
+    ) -> tuple[bytes, str] | None:
+        """Return a file's content and blob SHA at ``ref``, or ``None`` if it does not exist."""
+        try:
+            data = await self._request(
+                "GET",
+                f"/repos/{location.owner}/{location.name}/contents/{quote(path)}",
+                params={"ref": ref},
+                not_found="missing_file",
+            )
+        except GitHubError as exc:
+            if exc.code == "missing_file":
+                return None
+            raise
+        if data.get("encoding") != "base64":
+            raise GitHubError("github_error", f"{path} is too large for the contents API.")
+        return base64.b64decode(str(data.get("content") or "")), str(data["sha"])
+
+    async def put_file(
+        self,
+        location: RepoLocation,
+        path: str,
+        content: bytes,
+        *,
+        branch: str,
+        message: str,
+        sha: str | None = None,
+    ) -> None:
+        """Create or update a file on ``branch`` (one commit)."""
+        body: dict[str, Any] = {
+            "message": message,
+            "content": base64.b64encode(content).decode(),
+            "branch": branch,
+        }
+        if sha is not None:
+            body["sha"] = sha
+        await self._request(
+            "PUT",
+            f"/repos/{location.owner}/{location.name}/contents/{quote(path)}",
+            json=body,
+            not_found="invalid_repo",
+        )
+
+    async def delete_file(
+        self, location: RepoLocation, path: str, *, branch: str, message: str, sha: str
+    ) -> None:
+        """Delete a file on ``branch`` (one commit)."""
+        await self._request(
+            "DELETE",
+            f"/repos/{location.owner}/{location.name}/contents/{quote(path)}",
+            json={"message": message, "sha": sha, "branch": branch},
+            not_found="invalid_repo",
+        )
+
+    async def create_pull_request(
+        self, location: RepoLocation, *, title: str, head: str, base: str, body: str, draft: bool
+    ) -> str:
+        """Open a pull request on ``location`` and return its URL."""
+        data = await self._request(
+            "POST",
+            f"/repos/{location.owner}/{location.name}/pulls",
+            json={"title": title, "head": head, "base": base, "body": body, "draft": draft},
+            not_found="invalid_repo",
+        )
+        return str(data["html_url"])
+
     async def _get_json(
         self, path: str, *, not_found: str, params: dict[str, str] | None = None
     ) -> dict[str, Any]:
+        return await self._request("GET", path, not_found=not_found, params=params)
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        not_found: str,
+        params: dict[str, str] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         try:
-            response = await self._http.get(
-                f"{self._api_url}{path}", headers=self._headers, params=params
+            response = await self._http.request(
+                method, f"{self._api_url}{path}", headers=self._headers, params=params, json=json
             )
         except httpx.HTTPError as exc:
             raise GitHubError("github_error", f"Could not reach GitHub: {exc}") from exc
         if response.status_code >= 400:
             self._raise_for(response, not_found=not_found)
-        data = response.json()
+        data = response.json() if response.content else {}
         if not isinstance(data, dict):
             raise GitHubError("github_error", "Unexpected response from GitHub.")
         return data
@@ -352,3 +478,90 @@ class GitHubClient:
                 "github_error", "GitHub rejected the credentials; check GITHUB_TOKEN."
             )
         raise GitHubError("github_error", f"GitHub returned HTTP {status}.")
+
+
+async def open_fix_pull_request(
+    client: GitHubClient,
+    *,
+    location: RepoLocation,
+    base_sha: str,
+    run_id: str,
+    patch: Patch,
+    title: str,
+    body: str,
+    draft: bool = True,
+) -> str:
+    """Open a pull request with a run's patch, from the token owner's fork (FR-016).
+
+    Steps: fork (unless the token owner owns the repository), create ``fixproof/<run_id>`` at
+    the run's commit, commit each changed file through the contents API, and open the pull
+    request against the default branch. The new file contents come from applying the patch with
+    ``git apply`` to the original files in a temporary folder; no repository code runs.
+
+    Returns:
+        The pull request's URL.
+
+    Raises:
+        GitHubError: For any GitHub failure, or a patch that does not apply.
+    """
+    login = await client.authenticated_login()
+    own_repository = login.lower() == location.owner.lower()
+    head = location if own_repository else await client.create_fork(location)
+    branch = f"fixproof/{run_id}"
+    originals: dict[str, tuple[bytes, str]] = {}
+    for change in patch.files:
+        if change.status is not FileStatus.ADDED:
+            found = await client.get_file(location, change.path, base_sha)
+            if found is None:
+                raise GitHubError("github_error", f"{change.path} is not in {base_sha[:12]}.")
+            originals[change.path] = found
+    updated = _apply_to_originals(patch, {path: data for path, (data, _) in originals.items()})
+    repo = await client.get_repo(location)
+    await client.create_branch(head, branch, base_sha)
+    message = f"{title} ({run_id})"
+    for change in patch.files:
+        sha = originals[change.path][1] if change.path in originals else None
+        if change.status is FileStatus.DELETED:
+            if sha is None:
+                raise GitHubError("github_error", f"Cannot delete {change.path}: unknown file.")
+            await client.delete_file(head, change.path, branch=branch, message=message, sha=sha)
+        else:
+            await client.put_file(
+                head, change.path, updated[change.path], branch=branch, message=message, sha=sha
+            )
+    return await client.create_pull_request(
+        location,
+        title=title,
+        head=f"{head.owner}:{branch}",
+        base=repo.default_branch or "main",
+        body=body,
+        draft=draft,
+    )
+
+
+def _apply_to_originals(patch: Patch, originals: dict[str, bytes]) -> dict[str, bytes]:
+    """Apply ``patch`` to the original files in a temporary folder and read the results."""
+    with tempfile.TemporaryDirectory(prefix="fixproof-pr-") as tmp:
+        root = Path(tmp)
+        for path, content in originals.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        problems = validate_patch(patch.unified_diff, root)
+        if problems:
+            raise GitHubError("github_error", "Unsafe patch: " + "; ".join(problems))
+        patch_file = root / ".fixproof.patch"
+        diff = patch.unified_diff
+        patch_file.write_text(
+            diff if diff.endswith("\n") else diff + "\n", encoding="utf-8", newline="\n"
+        )
+        ok, message = git_apply(patch_file, root, check=False, keep_line_endings=True)
+        if not ok:
+            raise GitHubError(
+                "github_error", f"The patch does not apply to the original files: {message}"
+            )
+        return {
+            change.path: (root / change.path).read_bytes()
+            for change in patch.files
+            if change.status is not FileStatus.DELETED
+        }
