@@ -83,7 +83,13 @@ def run_of(passed: list[str], run_id: str) -> TestRun:
     return TestRun(id=run_id, snapshot_id="img", results=results, exit_code=0)
 
 
-def make_run_dir(tmp_path: Path, diff: str, *, label: OutcomeLabel = OutcomeLabel.VERIFIED) -> Path:
+def make_run_dir(
+    tmp_path: Path,
+    diff: str,
+    *,
+    label: OutcomeLabel = OutcomeLabel.VERIFIED,
+    executor: str | None = None,
+) -> Path:
     run_dir = tmp_path / "runs" / RUN_ID
     patch = Patch(
         unified_diff=diff,
@@ -112,7 +118,10 @@ def make_run_dir(tmp_path: Path, diff: str, *, label: OutcomeLabel = OutcomeLabe
     write_report_files(run_dir, report, render_markdown(report))
     bus = EventBus(RUN_ID)
     writer = TraceWriter.for_run(tmp_path / "runs", RUN_ID).attach(bus)
-    bus.publish(EventType.RUN_STARTED, {"repo_url": REPO_URL, "ref": None, "task": {}})
+    started: dict[str, Any] = {"repo_url": REPO_URL, "ref": None, "task": {}}
+    if executor is not None:
+        started["executor"] = executor
+    bus.publish(EventType.RUN_STARTED, started)
     bus.publish(EventType.REPO_FETCHED, {"resolved_sha": SHA, "size_kb": 1})
     writer.close()
     return run_dir
@@ -231,8 +240,14 @@ def test_apply_needs_a_run_with_a_patch(tmp_path: Path) -> None:
 class FakeGitHubApi:
     """Records requests and answers like the GitHub REST API for the pull-request flow."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        core_text: str = CALC_FILES["calc/core.py"],
+        overrides: dict[tuple[str, str], tuple[int, Any]] | None = None,
+    ) -> None:
         self.requests: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.core_text = core_text
+        self.overrides = overrides or {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
@@ -255,7 +270,7 @@ class FakeGitHubApi:
                 {
                     "encoding": "base64",
                     "sha": "blob-core",
-                    "content": base64.b64encode(CALC_FILES["calc/core.py"].encode()).decode(),
+                    "content": base64.b64encode(self.core_text.encode()).decode(),
                 },
             ),
             ("PUT", "/repos/alice/calc/contents/calc/core.py"): (201, {"commit": {}}),
@@ -265,6 +280,7 @@ class FakeGitHubApi:
                 {"html_url": "https://github.com/acme/calc/pull/42"},
             ),
         }
+        routes.update(self.overrides)
         code, payload = routes.get((request.method, path), (404, {"message": "Not Found"}))
         return httpx.Response(code, json=payload)
 
@@ -308,6 +324,45 @@ def test_pr_opens_a_draft_pull_request_from_a_fork(
     assert "returned `a - b`" in pull["body"]  # root cause
     assert "Verified" in pull["body"] and REPRO_ID in pull["body"]  # evidence
     assert "AI agent" in pull["body"]
+    assert "Nebius Token Factory sandbox" in pull["body"]
+
+
+def test_pr_body_says_when_the_tests_ran_in_local_docker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, checkout: Path
+) -> None:
+    api = FakeGitHubApi()
+    use_github(monkeypatch, api, "ghp_user_token_123456")
+    run_dir = make_run_dir(tmp_path, real_patch(checkout), executor="docker")
+    result = invoke("pr", str(run_dir), answer="y\n")
+    assert result.exit_code == 0, result.output
+    pull = {(m, p): b for m, p, b in api.requests}[("POST", "/repos/acme/calc/pulls")]
+    assert pull is not None
+    assert "local Docker container" in pull["body"]
+    assert "Token Factory sandbox" not in pull["body"]
+
+
+def test_a_patch_that_no_longer_applies_creates_no_fork(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, checkout: Path
+) -> None:
+    api = FakeGitHubApi(core_text="def add(a, b):\n    return b + a\n")
+    use_github(monkeypatch, api, "ghp_user_token_123456")
+    run_dir = make_run_dir(tmp_path, real_patch(checkout))
+    result = invoke("pr", str(run_dir), answer="y\n")
+    assert result.exit_code == 5
+    assert "does not apply" in result.stderr
+    assert all(method == "GET" for method, _, _ in api.requests)  # nothing written to GitHub
+
+
+def test_github_explains_why_it_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, checkout: Path
+) -> None:
+    refusal = (422, {"message": "A pull request already exists for alice:fixproof"})
+    api = FakeGitHubApi(overrides={("POST", "/repos/acme/calc/pulls"): refusal})
+    use_github(monkeypatch, api, "ghp_user_token_123456")
+    run_dir = make_run_dir(tmp_path, real_patch(checkout))
+    result = invoke("pr", str(run_dir), answer="y\n")
+    assert result.exit_code == 5
+    assert "HTTP 422" in result.stderr and "already exists" in result.stderr
 
 
 def test_declining_a_pull_request_makes_no_http_calls(

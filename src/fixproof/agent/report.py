@@ -266,8 +266,20 @@ def evidence_lines(report: Report) -> list[str]:
     return lines
 
 
-def pull_request_body(report: Report) -> str:
-    """Write the pull-request description from the report (FR-016)."""
+SANDBOX_TEXT = {
+    "contree": "an isolated Nebius Token Factory sandbox",
+    "docker": "a local Docker container (development setup)",
+}
+
+
+def pull_request_body(report: Report, *, executor: str = "contree") -> str:
+    """Write the pull-request description from the report (FR-016).
+
+    Args:
+        report: The run's report.
+        executor: Where the run's tests ran (``contree`` or ``docker``), stated honestly.
+    """
+    sandbox = SANDBOX_TEXT.get(executor, f"an isolated environment ({executor})")
     sections = [
         "## Summary",
         "",
@@ -279,7 +291,7 @@ def pull_request_body(report: Report) -> str:
         "",
         "## Evidence",
         "",
-        "Collected by FixProof in an isolated Token Factory sandbox:",
+        f"Collected by FixProof in {sandbox}:",
         "",
         *(f"- {line}" for line in evidence_lines(report)),
         "",

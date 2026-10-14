@@ -477,7 +477,14 @@ class GitHubClient:
             raise GitHubError(
                 "github_error", "GitHub rejected the credentials; check GITHUB_TOKEN."
             )
-        raise GitHubError("github_error", f"GitHub returned HTTP {status}.")
+        detail = ""
+        try:
+            message = response.json().get("message")
+        except (ValueError, AttributeError):
+            message = None
+        if isinstance(message, str) and message:
+            detail = f": {message[:300]}"
+        raise GitHubError("github_error", f"GitHub returned HTTP {status}{detail}.")
 
 
 async def open_fix_pull_request(
@@ -505,9 +512,6 @@ async def open_fix_pull_request(
         GitHubError: For any GitHub failure, or a patch that does not apply.
     """
     login = await client.authenticated_login()
-    own_repository = login.lower() == location.owner.lower()
-    head = location if own_repository else await client.create_fork(location)
-    branch = f"fixproof/{run_id}"
     originals: dict[str, tuple[bytes, str]] = {}
     for change in patch.files:
         if change.status is not FileStatus.ADDED:
@@ -515,8 +519,12 @@ async def open_fix_pull_request(
             if found is None:
                 raise GitHubError("github_error", f"{change.path} is not in {base_sha[:12]}.")
             originals[change.path] = found
+    # Everything that can fail without writing to GitHub happens before the fork.
     updated = _apply_to_originals(patch, {path: data for path, (data, _) in originals.items()})
     repo = await client.get_repo(location)
+    own_repository = login.lower() == location.owner.lower()
+    head = location if own_repository else await client.create_fork(location)
+    branch = f"fixproof/{run_id}"
     await client.create_branch(head, branch, base_sha)
     message = f"{title} ({run_id})"
     for change in patch.files:

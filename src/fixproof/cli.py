@@ -461,19 +461,21 @@ def _approve() -> bool:
     return answer.strip().lower() in ("y", "yes")
 
 
-def _run_origin(run_dir: Path) -> tuple[str, str]:
-    """Return the repository URL and the commit the run worked on, from its trace."""
+def _run_origin(run_dir: Path) -> tuple[str, str, str]:
+    """Return the repository URL, the commit, and the executor of a run, from its trace."""
     trace_file = run_dir / "trace.jsonl"
     repo_url = sha = None
+    executor = "contree"
     if trace_file.is_file():
         for event in read_trace(trace_file):
             if event.type is EventType.RUN_STARTED:
                 repo_url = event.data.get("repo_url")
+                executor = str(event.data.get("executor") or executor)
             elif event.type is EventType.REPO_FETCHED:
                 sha = event.data.get("resolved_sha")
     if not repo_url or not sha:
         _fail(f"{run_dir} does not record the repository and commit it ran on.", EXIT_INVALID_INPUT)
-    return str(repo_url), str(sha)
+    return str(repo_url), str(sha), executor
 
 
 @app.command()
@@ -529,7 +531,7 @@ def pr(
     """Open a pull request with a run's patch from your own GitHub account, after approval."""
     console = Console(soft_wrap=True, highlight=False)
     report, diff = _load_run(run_dir)
-    repo_url, base_sha = _run_origin(run_dir)
+    repo_url, base_sha, executor = _run_origin(run_dir)
     _check_label(report, force_unverified, console)
     settings = factories.settings()
     if settings.github_token is None or not settings.github_token.get_secret_value():
@@ -561,7 +563,7 @@ def pr(
                 run_id=report.run_id,
                 patch=report.patch,
                 title=pr_title,
-                body=pull_request_body(report),
+                body=pull_request_body(report, executor=executor),
                 draft=draft,
             )
         )
