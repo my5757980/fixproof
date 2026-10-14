@@ -51,8 +51,11 @@ def build_pytest_command(
         except ValueError as exc:
             raise ValueError(f"invalid test selector {selector!r}: {exc}") from exc
         target = " " + " ".join(shlex.quote(token) for token in tokens)
+    # --continue-on-collection-errors: a test module that cannot be imported is reported as an
+    # error, and the rest of the suite still runs (otherwise pytest runs nothing at all).
     pytest_cmd = (
         "PYTHONDONTWRITEBYTECODE=1 python -m pytest -rA -q --color=no -p no:cacheprovider "
+        "--continue-on-collection-errors "
         f"-o junit_family=xunit1 --junitxml={JUNIT_PATH}{target}"
     )
     return (

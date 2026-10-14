@@ -31,6 +31,8 @@ def test_build_command_contains_markers_and_flags() -> None:
     cmd = build_pytest_command("tests/test_math.py::test_div[2-0]")
     assert "PYTHONDONTWRITEBYTECODE=1 python -m pytest" in cmd
     assert "-p no:cacheprovider" in cmd and "--junitxml=/tmp/fixproof-junit.xml" in cmd
+    # One test module that fails to import must not stop every other test from running.
+    assert "--continue-on-collection-errors" in cmd
     assert JUNIT_BEGIN in cmd and JUNIT_END in cmd and OUT_BEGIN in cmd and OUT_END in cmd
     assert "tail -c 4000" in cmd
     assert shlex.quote("tests/test_math.py::test_div[2-0]") in cmd

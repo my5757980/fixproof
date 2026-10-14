@@ -193,6 +193,9 @@ once Token Factory and Sandboxes access is granted.
   - Run `python -m pytest -rA -q -p no:cacheprovider --junitxml=/tmp/fixproof-junit.xml <selector>`
     with `PYTHONDONTWRITEBYTECODE=1`, inside one shell command that prints the JUnit XML and the
     tail of the console output between unique markers.
+  - Add `--continue-on-collection-errors` (2026-10-14): when one test module cannot be imported,
+    pytest otherwise runs nothing at all, which leaves no baseline to compare against. Task
+    validation found this in real repositories (Requests).
   - Parse the XML with the standard library (`xml.etree.ElementTree`) into per-test outcomes.
   - Re-run baseline failures once to detect flakes.
   - The reproduction test must pass on **3 consecutive** runs to count (FR-007).
