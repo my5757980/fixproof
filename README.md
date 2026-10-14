@@ -155,12 +155,14 @@ cp .env.example .env          # set NEBIUS_API_KEY and CONTREE_PROJECT (never co
 uv run fixproof doctor        # checks the key, the model IDs, and sandbox access
 ```
 
-Run the agent (one command):
+Run the agent (one command). This example is a real, already-fixed bug in Requests, at the
+commit before the fix; that old revision needs Python 3.9, which the first part of the command
+selects (or set `FIXPROOF_BASE_IMAGE=python:3.9` in `.env`):
 
 ```bash
-uv run fixproof fix --repo https://github.com/pallets/flask \
-  --ref 7ee9ceb71e868944a46e1ff00b506772a53a4f1d \
-  --bug "Blueprint accepts an empty name; it should raise ValueError."
+FIXPROOF_BASE_IMAGE=python:3.9 uv run fixproof fix --repo https://github.com/psf/requests \
+  --ref 22623bd8c265b78b161542663ee980738441c307 \
+  --bug "requests.get always sends a Content-Length header, even for a GET without a body. Some servers reject such requests."
 ```
 
 Run the tests (one command, offline, no credentials needed):
