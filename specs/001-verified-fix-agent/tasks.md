@@ -793,8 +793,12 @@ documentation, and the hackathon submission package.
   - write `bench/results/<date>/results.json` and `summary.md`.
 
   Add `fixproof bench run` and `fixproof bench report` to `src/fixproof/cli.py`.
-- [ ] T079 Expand `bench/tasks.toml` to at least 10 real tasks using the T053 criteria. Pre-build
+- [X] T079 Expand `bench/tasks.toml` to at least 10 real tasks using the T053 criteria. Pre-build
   and tag sandbox images (`fixproof/bench/<id>`) for tasks whose install is slow or needs network.
+  - Done 2026-10-14: 10 tasks (Requests and Flask), each validated in Docker with FixProof's own
+    install recipe plus `pip_packages` pins; the hidden tests fail without the official fix and
+    pass with it. Installs took 1–10 minutes and full suites 6–117 seconds locally. Pre-building
+    Sandboxes images moves to T080, if installs are slow on Sandboxes.
 - [ ] T080 Run the full benchmark from `bench/tasks.toml` live on Nebius, both single-path and
   `--compare-single` with parallel mode. Save the results in `bench/results/<date>/` and copy the
   summary table into `README.md` (SC-001, SC-002, SC-007).

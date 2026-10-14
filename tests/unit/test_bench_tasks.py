@@ -16,12 +16,13 @@ TASKS_FILE = Path(__file__).resolve().parents[2] / "bench" / "tasks.toml"
 
 def test_seeded_tasks_are_valid() -> None:
     tasks = load_benchmark_tasks(TASKS_FILE)
-    assert len(tasks) >= 3
+    assert len(tasks) >= 10  # FR-023
     for task in tasks:
         parse_repo_url(task.repo_url)
         assert re.fullmatch(r"[0-9a-f]{40}", task.base_commit), task.id
         assert task.python in {"3.9", "3.10", "3.11", "3.12"}, task.id
         assert task.hidden_fail_to_pass, task.id
+        assert task.hidden_test_patch == f"hidden/{task.id}.patch", task.id
         assert task.task.kind is TaskKind.DESCRIPTION and task.task.value.strip()
         for node_id in (*task.hidden_fail_to_pass, *task.hidden_pass_to_pass):
             assert node_id not in task.task.value, f"{task.id} shows a hidden test"
