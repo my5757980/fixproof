@@ -767,14 +767,14 @@ revision; the tests pass. `fixproof apply` and `fixproof pr` change nothing when
 **Purpose**: Measurement (FR-023), the optional web search tool (FR-022), security hardening,
 documentation, and the hackathon submission package.
 
-- [ ] T075 [P] Write `tests/unit/test_web_search.py`. It covers:
+- [X] T075 [P] Write `tests/unit/test_web_search.py`. It covers:
   - the tool is absent from the registry unless `FIXPROOF_WEB_SEARCH=1` and `TAVILY_API_KEY`
     are set;
   - an `httpx.MockTransport` request body contains only `query` (200 chars or fewer),
     `max_results: 5`, and `search_depth: "basic"`, plus the `Authorization: Bearer` header;
   - results are mapped to `{title, url, snippet}`;
   - a failure returns `search_failed`.
-- [ ] T076 Implement the optional `web_search` handler (Tavily `POST https://api.tavily.com/search`,
+- [X] T076 Implement the optional `web_search` handler (Tavily `POST https://api.tavily.com/search`,
   research.md R12) in `src/fixproof/tools/handlers.py` and register it conditionally in
   `src/fixproof/tools/registry.py`.
 - [ ] T077 [P] Write `tests/integration/test_bench_runner.py` with the fakes. It checks that:

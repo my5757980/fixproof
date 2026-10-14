@@ -40,8 +40,9 @@ from fixproof.models import RUN_ID_PATTERN, OutcomeLabel, RunMode, SampleTask, T
 from fixproof.repo.github import GitHubError, RepoSource, parse_issue_url, parse_repo_url
 from fixproof.sandbox.executor import Executor
 from fixproof.sandbox.factory import make_executor
+from fixproof.tools.tavily import TavilySearch
 from fixproof.trace import read_trace
-from fixproof.wiring import github_source, token_factory_client
+from fixproof.wiring import github_source, token_factory_client, web_search_backend
 
 KEEP_RUNS = 200
 REPLAY_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
@@ -129,6 +130,7 @@ class RunFactories:
     model: Callable[[Settings], ModelClient] = token_factory_client
     executor: Callable[[Settings, EventCallback], Executor] = make_executor
     repo_source: Callable[[Settings], RepoSource] = github_source
+    web_search: Callable[[Settings], TavilySearch | None] = web_search_backend
 
 
 class DailyBudget:
@@ -361,6 +363,7 @@ class RunManager:
             p.name for p in self._state_dir.iterdir() if p.is_dir() and RUN_ID_PATTERN.match(p.name)
         )
         self._repo_source: RepoSource | None = None
+        self._web_search = self._factories.web_search(settings)
         self.paused_reason = self._configuration_problem()
         load_replays(replays_dir)  # fail fast on an invalid catalog
 
@@ -515,6 +518,9 @@ class RunManager:
         if self._repo_source is not None:
             await self._repo_source.aclose()
             self._repo_source = None
+        if self._web_search is not None:
+            await self._web_search.aclose()
+            self._web_search = None
 
     # -- internals -----------------------------------------------------------------------
 
@@ -604,6 +610,7 @@ class RunManager:
             runs_dir=self._state_dir,
             budget=self._limits,
             max_repo_kb=self.settings.demo_max_repo_mb * 1024,
+            web_search=self._web_search,
         )
         managed = ManagedRun(
             run_id=bus.run_id,

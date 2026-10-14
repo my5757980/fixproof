@@ -5,6 +5,8 @@ from __future__ import annotations
 from fixproof.config import Settings
 from fixproof.llm.client import ModelClient, TokenFactoryClient
 from fixproof.repo.github import GitHubClient, RepoSource
+from fixproof.tools.registry import web_search_enabled
+from fixproof.tools.tavily import TavilySearch
 
 
 def token_factory_client(settings: Settings) -> ModelClient:
@@ -25,3 +27,12 @@ def github_client(settings: Settings) -> GitHubClient:
 def github_source(settings: Settings) -> RepoSource:
     """Return the GitHub intake client, with the optional read-only ``GITHUB_TOKEN``."""
     return github_client(settings)
+
+
+def web_search_backend(settings: Settings) -> TavilySearch | None:
+    """Return the Tavily search backend when web search is enabled (FR-022), else ``None``."""
+    if not web_search_enabled(settings) or settings.tavily_api_key is None:
+        return None
+    return TavilySearch(
+        settings.tavily_api_key.get_secret_value(), secrets=settings.secret_values()
+    )

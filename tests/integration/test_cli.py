@@ -258,3 +258,13 @@ def test_parallel_accepts_only_one_to_three(tmp_path: Path) -> None:
     for value in ("0", "4"):
         result = invoke(*FIX, "--parallel", value, "--out", str(tmp_path))
         assert result.exit_code == 2, value
+
+
+def test_fix_offers_web_search_only_when_enabled(use_fakes: Install, tmp_path: Path) -> None:
+    enabled = make_settings(web_search=True, tavily_api_key="tvly-test-key-123456")
+    for settings, offered in ((make_settings(), False), (enabled, True)):
+        model = use_fakes(settings=settings)
+        result = invoke(*FIX, "--out", str(tmp_path / str(offered)))
+        assert result.exit_code == 0, result.output
+        names = {tool["function"]["name"] for r in model.requests for tool in r.tools}
+        assert ("web_search" in names) is offered

@@ -38,9 +38,10 @@ from fixproof.repo.github import (
 from fixproof.repo.patches import git_apply, validate_patch
 from fixproof.sandbox.executor import Executor
 from fixproof.sandbox.factory import assert_demo_safe, make_executor
+from fixproof.tools.tavily import TavilySearch
 from fixproof.trace import read_trace
 from fixproof.trace import replay as replay_trace
-from fixproof.wiring import github_client, github_source, token_factory_client
+from fixproof.wiring import github_client, github_source, token_factory_client, web_search_backend
 
 EXIT_VERIFIED = 0
 EXIT_INTERNAL_ERROR = 1
@@ -75,6 +76,7 @@ class Factories:
     executor: Callable[[Settings, EventCallback], Executor] = make_executor
     repo_source: Callable[[Settings], RepoSource] = github_source
     github: Callable[[Settings], GitHubClient] = github_client
+    web_search: Callable[[Settings], TavilySearch | None] = web_search_backend
 
 
 factories = Factories()
@@ -316,6 +318,7 @@ async def _run_fix(
     model = factories.model(settings)
     executor = factories.executor(settings, publish)
     repo_source = factories.repo_source(settings)
+    search = factories.web_search(settings)
 
     def render(event: TraceEvent) -> None:
         line = describe_event(event, verbose=verbose)
@@ -331,6 +334,7 @@ async def _run_fix(
         bus=bus,
         runs_dir=out,
         budget=budget,
+        web_search=search,
     )
     restore = _install_interrupt_handler(orchestrator, console)
     try:
@@ -339,6 +343,8 @@ async def _run_fix(
         restore()
         await executor.close()
         await repo_source.aclose()
+        if search is not None:
+            await search.aclose()
 
 
 def _install_interrupt_handler(orchestrator: Orchestrator, console: Console) -> Callable[[], None]:

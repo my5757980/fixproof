@@ -232,7 +232,8 @@ def build_registry(*, web_search: bool = False) -> ToolRegistry:
 
 def web_search_enabled(settings: Settings) -> bool:
     """Return whether ``web_search`` is on: ``FIXPROOF_WEB_SEARCH=1`` and a Tavily key."""
-    return settings.web_search and settings.tavily_api_key is not None
+    key = settings.tavily_api_key
+    return settings.web_search and key is not None and bool(key.get_secret_value())
 
 
 def export_schema(model: type[BaseModel]) -> dict[str, Any]:
