@@ -1,13 +1,8 @@
-"""The benchmark runner (FR-023, SC-001, SC-002, SC-004, SC-007) with fakes.
-
-The calc fake gets a hidden reference test (``add(3, 4) == 7``) that only the benchmark's
-after-run check may add, in a fresh environment.
-"""
+"""The benchmark runner (FR-023, SC-001, SC-002, SC-004, SC-007) with fakes."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -30,57 +25,22 @@ from fixproof.bench.runner import (
 from fixproof.bench.tasks import load_benchmark_tasks
 from fixproof.cli import Factories, app
 from fixproof.config import Settings
-from fixproof.models import ModelRole, OutcomeLabel, RunMode, StopReason, TestCaseResult
+from fixproof.models import ModelRole, OutcomeLabel, RunMode, StopReason
 from fixproof.repo.patches import changed_files, drop_files
-from tests.fakes.calc_repo import CALC_FILES, EXISTING_ID, REPO_URL, calc_behavior, selected
-from tests.fakes.fake_executor import FakeExecutor, outcome
-from tests.fakes.fake_github import DEFAULT_SHA, FakeGitHub
+from tests.fakes.bench import HIDDEN_ID, HIDDEN_PATH, TASK_ID, bench_behavior, write_tasks
+from tests.fakes.calc_repo import CALC_FILES
+from tests.fakes.fake_executor import FakeExecutor
+from tests.fakes.fake_github import FakeGitHub
 from tests.fakes.fake_model import FakeModelClient
 from tests.fakes.git_apply import git_apply
 from tests.fakes.parallel import BranchScripts, parallel_planner
 from tests.fakes.scenario import fix_replies, happy_planner, happy_worker, reproduce_replies
 from tests.fakes.settings import make_settings
 
-TASK_ID = "acme__calc-7"
-HIDDEN_PATH = "tests/test_hidden.py"
-HIDDEN_ID = f"{HIDDEN_PATH}::test_add_hidden"
-HIDDEN_TEST = "from calc.core import add\n\n\ndef test_add_hidden():\n    assert add(3, 4) == 7\n"
-HIDDEN_PATCH = (
-    f"diff --git a/{HIDDEN_PATH} b/{HIDDEN_PATH}\n"
-    "new file mode 100644\n"
-    "--- /dev/null\n"
-    f"+++ b/{HIDDEN_PATH}\n"
-    "@@ -0,0 +1,5 @@\n" + "".join(f"+{line}\n" for line in HIDDEN_TEST.splitlines())
-)
-TASKS_TOML = f"""
-[[tasks]]
-id = "{TASK_ID}"
-repo_url = "{REPO_URL}"
-base_commit = "{DEFAULT_SHA}"
-python = "3.12"
-hidden_fail_to_pass = ["{HIDDEN_ID}"]
-hidden_pass_to_pass = ["{EXISTING_ID}"]
-hidden_test_patch = "hidden/{TASK_ID}.patch"
-
-[tasks.task]
-kind = "description"
-value = "add() returns the wrong result: add(2, 3) returns -1 instead of 5."
-"""
 OVERFIT = "return a + b if (a, b) == (2, 3) else a - b"
 runner = CliRunner()
 
 Script = tuple[list[Any], list[Any]]
-
-
-def bench_behavior(fs: Mapping[str, bytes], selector: str | None) -> list[TestCaseResult]:
-    """The calc tests plus the hidden reference test, when its file exists."""
-    results = calc_behavior(fs, selector)
-    if HIDDEN_PATH in fs and selected(HIDDEN_ID, selector):
-        namespace: dict[str, Any] = {}
-        exec(fs["calc/core.py"].decode(), namespace)
-        ok = namespace["add"](3, 4) == 7
-        results.append(outcome(HIDDEN_ID, "passed" if ok else "failed", None if ok else "-1"))
-    return results
 
 
 class Fakes:
@@ -110,14 +70,6 @@ class Fakes:
 
     def services(self) -> BenchServices:
         return BenchServices(model=self.model, executor=self.executor, repo_source=self.repo_source)
-
-
-def write_tasks(folder: Path) -> Path:
-    (folder / "hidden").mkdir(parents=True, exist_ok=True)
-    (folder / "hidden" / f"{TASK_ID}.patch").write_text(HIDDEN_PATCH, encoding="utf-8")
-    tasks_file = folder / "tasks.toml"
-    tasks_file.write_text(TASKS_TOML, encoding="utf-8")
-    return tasks_file
 
 
 async def run_bench(tmp_path: Path, fakes: Fakes, **options: Any) -> Any:
