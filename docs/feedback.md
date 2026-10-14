@@ -22,6 +22,12 @@ Entry format: **date**, what we used it for, what worked, what needs improvement
   review, with no timeline.
   - *Improvement*: A published timeline, or an official interim route for participants from
     unsupported countries, would remove a lot of uncertainty in a 2-month hackathon.
+- **2026-10-14**: Still no staff reply in our Discord thread or by email. Since 2026-10-10, other
+  participants have posted the same blocker in the thread, in `#token-factory-support`, and in
+  `#devpost-global-ai-hackathon`: more people from Pakistan, and others from Ukraine and Senegal,
+  plus students without a payment card. None of those posts had a staff reply either.
+  - *Improvement*: One pinned answer for unsupported countries and card-less students would
+    help every affected participant at once, instead of many unanswered threads.
 - **2026-10-03**: The promo code email is clear, and it states the code must be applied by
   2026-12-31 and does not expire once applied. That is helpful for keeping a judge demo funded
   through the judging period.
