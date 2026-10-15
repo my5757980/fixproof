@@ -864,6 +864,7 @@ class Orchestrator:
                 root_cause = draft.root_cause_md or root_cause
                 citations = list(draft.citations) or citations
         valid, flags = await validate_citations(self._executor, snapshot, citations)
+        flags = [*self._platform_flags(), *flags]
         if best is not None and not stopped:
             await self._key_snapshot(best.snapshot, "final-1")
 
@@ -926,11 +927,17 @@ class Orchestrator:
             citations=[],
             patch=best.patch if best else None,
             evidence=best.evidence if best else self._evidence,
+            flags=self._platform_flags(),
             cost_usd=self._budget.cost_usd,
             duration_s=self._budget.seconds_elapsed,
             models=self._settings.models_by_role(),
         )
         self._save_report(run, report)
+
+    def _platform_flags(self) -> list[str]:
+        """The 'not the hackathon platform' label (FR-024), when it applies to this run."""
+        note = self._settings.platform_note()
+        return [note] if note else []
 
     def _save_report(self, run: Run, report: Report) -> None:
         write_report_files(self.run_dir, report, render_markdown(report, run))

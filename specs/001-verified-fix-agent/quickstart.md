@@ -133,6 +133,20 @@ Then create a Docker Space, push the repository, and set the `.env` values as **
 **Never** set `FIXPROOF_ALLOW_DEV` or a non-Nebius `NEBIUS_BASE_URL` there. Verify that
 `/api/health` reports `live_runs_available: true` and `executor: contree`.
 
+## Personal mode (constitution 2.1.0, FR-024)
+
+```bash
+cp .env.personal.example .env      # FIXPROOF_PROVIDER=nvidia, NVIDIA_API_KEY, FIXPROOF_EXECUTOR=docker
+uv run fixproof doctor             # key set, model IDs listed by NVIDIA's API, Docker reachable
+FIXPROOF_BASE_IMAGE=python:3.9 uv run fixproof fix --repo https://github.com/psf/requests \
+  --ref 22623bd8c265b78b161542663ee980738441c307 \
+  --bug "requests.get always sends a Content-Length header, even for a GET without a body."
+```
+
+Check that `doctor` reports the endpoint as "personal mode, not the hackathon platform", and that
+`report.md` starts its flags with "Not the hackathon platform". Never use this setup for the
+demo, the video, or published benchmark results.
+
 ## Development-only: before Sandboxes access arrives
 
 ```bash

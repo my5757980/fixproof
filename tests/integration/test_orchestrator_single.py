@@ -464,6 +464,17 @@ async def test_q_a_request_can_choose_its_base_image(tmp_runs_dir: Path) -> None
     assert default.executor.base_images == ["python:3.12"]
 
 
+async def test_s_personal_mode_runs_are_labeled_in_the_report(tmp_runs_dir: Path) -> None:
+    s = make_scenario(tmp_runs_dir, settings=make_settings(provider="nvidia", executor="docker"))
+    run = await s.run()
+
+    assert run.label is OutcomeLabel.VERIFIED
+    report = load_report(s)
+    assert report.flags[0].startswith("Not the hackathon platform")
+    assert "NVIDIA" in report.flags[0]
+    assert make_scenario(tmp_runs_dir).settings.platform_note() is None
+
+
 async def test_r_pinned_packages_are_installed_after_the_recipe(tmp_runs_dir: Path) -> None:
     s = make_scenario(tmp_runs_dir)
     await s.orchestrator.run(

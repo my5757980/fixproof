@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.personal.example
 
 # Playwright MCP browser snapshots and screenshots (may contain personal data)
 .playwright-mcp/

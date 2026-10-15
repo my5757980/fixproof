@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from fixproof.models import Budget, ModelRole
@@ -30,6 +30,24 @@ DEFAULT_PRICES: dict[str, tuple[float, float]] = {
     "nvidia/nemotron-3_5-lightning": (0.06, 0.24),
 }
 
+# Personal mode (FR-024, constitution 2.1.0): NVIDIA's own OpenAI-compatible API. The model IDs
+# follow third-party documentation of that API; `fixproof doctor` checks them against the
+# endpoint's model list. NVIDIA's API is free to use for these models (no per-token charge).
+NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/"
+NVIDIA_PLANNER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+NVIDIA_WORKER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NVIDIA_FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+NVIDIA_PRICES: dict[str, tuple[float, float]] = {
+    model: (0.0, 0.0)
+    for model in (NVIDIA_PLANNER_MODEL, NVIDIA_WORKER_MODEL, NVIDIA_FALLBACK_MODEL)
+}
+_PERSONAL_DEFAULTS = {
+    "nebius_base_url": NVIDIA_API_URL,
+    "planner_model": NVIDIA_PLANNER_MODEL,
+    "worker_model": NVIDIA_WORKER_MODEL,
+    "fallback_model": NVIDIA_FALLBACK_MODEL,
+}
+
 
 class ConfigError(Exception):
     """Raised when a required setting is missing or invalid; the message names the variable."""
@@ -46,7 +64,13 @@ class Settings(BaseSettings):
         validate_by_alias=True,
     )
 
-    # Nebius Token Factory (inference)
+    # Model provider: nebius (the hackathon configuration) or nvidia (personal mode, FR-024)
+    provider: Literal["nebius", "nvidia"] = Field(
+        default="nebius", validation_alias="FIXPROOF_PROVIDER"
+    )
+    nvidia_api_key: SecretStr | None = Field(default=None, validation_alias="NVIDIA_API_KEY")
+
+    # Nebius Token Factory (inference). In personal mode the base URL defaults to NVIDIA's API.
     nebius_api_key: SecretStr | None = Field(default=None, validation_alias="NEBIUS_API_KEY")
     nebius_base_url: str = Field(default=TOKEN_FACTORY_URL, validation_alias="NEBIUS_BASE_URL")
 
@@ -105,12 +129,41 @@ class Settings(BaseSettings):
     )
     demo_url: str | None = Field(default=None, validation_alias="FIXPROOF_DEMO_URL")
 
+    @model_validator(mode="after")
+    def _apply_provider_defaults(self) -> Settings:
+        """In personal mode, default the endpoint and models to NVIDIA's API.
+
+        Values set explicitly (in the environment, ``.env``, or by name) always win.
+        """
+        if self.is_personal_mode():
+            for name, value in _PERSONAL_DEFAULTS.items():
+                if name not in self.model_fields_set:
+                    setattr(self, name, value)
+        return self
+
+    def is_personal_mode(self) -> bool:
+        """Return whether personal mode (NVIDIA's API, FR-024) is selected."""
+        return self.provider == "nvidia"
+
+    def api_key_variable(self) -> str:
+        """Return the name of the variable that holds the model API key."""
+        return "NVIDIA_API_KEY" if self.is_personal_mode() else "NEBIUS_API_KEY"
+
     def require_api_key(self) -> str:
-        """Return the Token Factory API key.
+        """Return the model API key: Token Factory's, or NVIDIA's in personal mode.
 
         Raises:
-            ConfigError: If ``NEBIUS_API_KEY`` is not set.
+            ConfigError: If the key is not set; the message names the variable to set.
         """
+        if self.is_personal_mode():
+            value = _secret(self.nvidia_api_key)
+            if not value:
+                raise ConfigError(
+                    "NVIDIA_API_KEY is not set. Create a key at "
+                    "https://build.nvidia.com/settings/api-keys and add NVIDIA_API_KEY=... to "
+                    "your .env file (personal mode)."
+                )
+            return value
         value = _secret(self.nebius_api_key)
         if not value:
             raise ConfigError(
@@ -148,15 +201,40 @@ class Settings(BaseSettings):
         return self.contree_project
 
     def is_dev_endpoint(self) -> bool:
-        """Return whether the inference endpoint is NOT Nebius Token Factory (dev-only use)."""
+        """Return whether the endpoint is not the selected provider's own (dev-only use).
+
+        The provider's own endpoint is Nebius Token Factory, or in personal mode NVIDIA's API.
+        """
         host = (urlparse(self.nebius_base_url).hostname or "").lower()
+        if self.is_personal_mode():
+            return host != urlparse(NVIDIA_API_URL).hostname
         is_token_factory = host.endswith(".nebius.com") and host.startswith("api.tokenfactory.")
         return not is_token_factory
+
+    def platform_note(self) -> str | None:
+        """Return a label for setups that are not the hackathon platform, else ``None``.
+
+        The hackathon platform is Nebius Token Factory with Token Factory Sandboxes.
+        """
+        on_platform = not (
+            self.is_personal_mode() or self.is_dev_endpoint() or self.executor != "contree"
+        )
+        if on_platform:
+            return None
+        if self.is_personal_mode() and not self.is_dev_endpoint():
+            models = "NVIDIA's API (personal mode)"
+        elif self.is_dev_endpoint():
+            models = f"a development endpoint ({self.nebius_base_url})"
+        else:
+            models = "Nebius Token Factory"
+        code = "Token Factory Sandboxes" if self.executor == "contree" else "local Docker"
+        return f"Not the hackathon platform: models from {models}, code run in {code}."
 
     def secret_values(self) -> list[str]:
         """Return every non-empty secret value, for redaction in traces and logs."""
         candidates = (
             self.nebius_api_key,
+            self.nvidia_api_key,
             self.contree_token,
             self.github_token,
             self.tavily_api_key,
@@ -197,8 +275,17 @@ class Settings(BaseSettings):
         }
 
     def price_table(self) -> dict[str, tuple[float, float]]:
-        """Return prices per 1M tokens keyed by lowercase model ID, with overrides applied."""
-        table = dict(DEFAULT_PRICES)
+        """Return prices per 1M tokens keyed by lowercase model ID, with overrides applied.
+
+        The defaults are the provider's: Token Factory prices, or $0 for NVIDIA's API (also for
+        any other model configured for a role in personal mode).
+        """
+        if self.is_personal_mode():
+            table = dict(NVIDIA_PRICES)
+            roles = (self.planner_model, self.worker_model, self.fallback_model)
+            table.update({model.lower(): (0.0, 0.0) for model in roles})
+        else:
+            table = dict(DEFAULT_PRICES)
         table.update({model.lower(): price for model, price in self.prices.items()})
         return table
 

@@ -873,6 +873,32 @@ documentation, and the hackathon submission package.
 
 ---
 
+## Phase 8: Personal Mode (FR-024, constitution 2.1.0, plan D12)
+
+**Purpose**: Make FixProof complete and usable without the hackathon platform: NVIDIA's own API
+for Nemotron models and the local Docker executor, selected explicitly and always labeled.
+
+- [X] T092 [P] Write tests in `tests/unit/test_config.py`: `FIXPROOF_PROVIDER=nvidia` switches the
+  default base URL to `https://integrate.api.nvidia.com/v1/` and the default model IDs to the
+  NVIDIA Nemotron IDs; explicitly set values still win; the key comes from `NVIDIA_API_KEY` and a
+  missing key names it and build.nvidia.com; the key is redacted; the NVIDIA host is not a "dev"
+  endpoint; NVIDIA models cost $0; the default provider is unchanged (Nebius).
+- [X] T093 [P] Write tests: `assert_demo_safe` refuses `FIXPROOF_PROVIDER=nvidia`; `doctor` names
+  `NVIDIA_API_KEY` and says "personal mode, not the hackathon platform"; benchmark summaries of
+  personal-mode runs carry the "not the hackathon platform" label.
+- [X] T094 Implement the provider setting in `src/fixproof/config.py` (provider defaults applied
+  only to values not set explicitly; per-provider prices), and the labels in `cli.py` (`doctor`),
+  `sandbox/factory.py` (`assert_demo_safe`), and `bench/runner.py`.
+- [X] T095 Update `.env.example`, the README (a "Personal mode" section: get a key at
+  build.nvidia.com, set `FIXPROOF_PROVIDER=nvidia`, `NVIDIA_API_KEY`, and `FIXPROOF_EXECUTOR=docker`;
+  run `doctor`), and quickstart.md.
+- [ ] T096 With the user's NVIDIA key: run `fixproof doctor` to confirm the model IDs, then one
+  real `fixproof fix` on a validated benchmark task with the Docker executor; record the result.
+- [ ] T097 Measure where a real Docker run spends its time and speed up the Docker executor on
+  slow machines (for example, fewer image commits), with tests for any behavior change.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

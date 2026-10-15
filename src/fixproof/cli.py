@@ -182,6 +182,17 @@ def describe_event(event: TraceEvent, *, verbose: bool = False) -> str | None:
     return None
 
 
+def _print_platform_notice(console: Console, settings: Settings) -> None:
+    """Say when the models do not come from the provider's own endpoint, or personal mode is on."""
+    if settings.is_dev_endpoint():
+        console.print(
+            "DEV ONLY: NEBIUS_BASE_URL does not point at the provider's own endpoint.",
+            markup=False,
+        )
+    elif settings.is_personal_mode():
+        console.print(settings.platform_note() or "Personal mode.", markup=False)
+
+
 def _fail(message: str, code: int) -> NoReturn:
     Console(stderr=True, soft_wrap=True).print(f"error: {message}", markup=False, highlight=False)
     raise typer.Exit(code)
@@ -282,10 +293,7 @@ def fix(
     settings = factories.settings()
     budget = _budget(settings, max_steps, max_minutes, max_cost)
     console = Console(stderr=json_output, soft_wrap=True, highlight=False)
-    if settings.is_dev_endpoint():
-        console.print(
-            "DEV ONLY: NEBIUS_BASE_URL does not point at Nebius Token Factory.", markup=False
-        )
+    _print_platform_notice(console, settings)
     request = RunRequest(
         repo_url=repo,
         task=task,
@@ -644,10 +652,7 @@ def bench_run(
         task_list = [task for task in task_list if task.id in wanted]
     settings = factories.settings()
     console = Console(soft_wrap=True, highlight=False)
-    if settings.is_dev_endpoint():
-        console.print(
-            "DEV ONLY: NEBIUS_BASE_URL does not point at Nebius Token Factory.", markup=False
-        )
+    _print_platform_notice(console, settings)
     out_dir = out or default_results_dir()
     bench = BenchRunner(
         settings=settings,
@@ -735,26 +740,34 @@ def doctor(
 
 async def _doctor_checks(settings: Settings) -> list[Check]:
     checks: list[Check] = []
-    key = settings.nebius_api_key.get_secret_value() if settings.nebius_api_key else ""
+    personal = settings.is_personal_mode()
+    secret = settings.nvidia_api_key if personal else settings.nebius_api_key
+    key = secret.get_secret_value() if secret else ""
+    where = (
+        "https://build.nvidia.com/settings/api-keys"
+        if personal
+        else "https://tokenfactory.nebius.com"
+    )
+    variable = settings.api_key_variable()
     checks.append(
         Check(
-            "NEBIUS_API_KEY",
+            variable,
             bool(key),
             "set" if key else "not set",
-            ""
-            if key
-            else "Create a key at https://tokenfactory.nebius.com and add "
-            "NEBIUS_API_KEY=... to .env.",
+            "" if key else f"Create a key at {where} and add {variable}=... to .env.",
         )
     )
     dev = settings.is_dev_endpoint()
+    label = (
+        " (DEV ONLY)" if dev else " (personal mode, not the hackathon platform)" if personal else ""
+    )
     checks.append(
         Check(
             "Model endpoint",
             not dev,
-            settings.nebius_base_url + (" (DEV ONLY)" if dev else ""),
-            "Unset NEBIUS_BASE_URL to use Nebius Token Factory; other endpoints are for local "
-            "development only."
+            settings.nebius_base_url + label,
+            "Unset NEBIUS_BASE_URL to use the provider's own endpoint; other endpoints are for "
+            "local development only."
             if dev
             else "",
         )
@@ -774,7 +787,7 @@ async def _model_checks(settings: Settings) -> list[Check]:
                 "Models",
                 False,
                 f"could not list models: {type(exc).__name__}: {exc}",
-                "Check NEBIUS_API_KEY and that the Token Factory account is active.",
+                f"Check {settings.api_key_variable()} and that the account is active.",
             )
         ]
     checks = []

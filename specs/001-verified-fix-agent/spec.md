@@ -298,6 +298,14 @@ and no pull request is opened without explicit approval.
   tasks from public Python repositories. It MUST provide one way to run the agent on all of them and
   report the verified-fix rate, without ever showing the agent the reference fix.
 
+**Personal mode** *(added 2026-10-15, constitution 2.1.0)*
+
+- **FR-024**: Outside the hackathon configuration, the agent MUST be able to run in an explicitly
+  selected personal mode that uses NVIDIA's own OpenAI-compatible API for Nemotron models (with
+  the same roles) and the local isolated environment. Personal mode MUST never be the default or
+  an automatic fallback, and every place that shows results (the readiness check, reports,
+  benchmark summaries) MUST say it is not the hackathon platform.
+
 ### Mandated Platform Constraints *(from the hackathon rules and the project constitution)*
 
 These are eligibility conditions, not design choices:
@@ -308,7 +316,8 @@ These are eligibility conditions, not design choices:
 - The isolated execution environment MUST be Nebius Token Factory Sandboxes, whose saved states and
   branching support Story 3.
 - The default configuration, the public demo, and the demo video MUST use Nebius. No other model
-  provider may be a default or an automatic fallback.
+  provider may be a default or an automatic fallback. Personal mode (FR-024) is the only other,
+  explicitly selected setup.
 - The submission deadline is 2026-10-30, 10:00 AM PDT. The demo must stay available through
   2026-12-15.
 

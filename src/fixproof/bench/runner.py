@@ -159,6 +159,7 @@ class BenchResults(BaseModel):
     parallel: int
     compare_single: bool
     dev_only: bool  # not Nebius Token Factory with Token Factory Sandboxes
+    platform_note: str | None = None  # what the setup was instead (Settings.platform_note)
     rows: list[BenchRow] = Field(default_factory=list)
 
 
@@ -242,7 +243,8 @@ class BenchRunner:
             budget=self._budget,
             parallel=parallel,
             compare_single=compare_single,
-            dev_only=settings.is_dev_endpoint() or settings.executor != "contree",
+            dev_only=settings.platform_note() is not None,
+            platform_note=settings.platform_note(),
         )
         total = len(tasks) * len(modes)
         for task in tasks:
@@ -616,9 +618,10 @@ def render_summary(results: BenchResults) -> str:
     budget = results.budget
     lines = ["# FixProof benchmark results", ""]
     if results.dev_only:
+        note = results.platform_note or "Not the hackathon platform."
         lines += [
-            "> **DEV ONLY**: these results did not come from Nebius Token Factory with Token "
-            "Factory Sandboxes. Do not publish them.",
+            f"> **{note}** These results did not come from Nebius Token Factory with Token "
+            "Factory Sandboxes; do not present them as hackathon results.",
             "",
         ]
     lines += [

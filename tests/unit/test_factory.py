@@ -32,3 +32,9 @@ def test_demo_accepts_only_nebius_settings() -> None:
     with pytest.raises(ConfigError, match="NEBIUS_BASE_URL"):
         assert_demo_safe(make_settings(nebius_base_url="https://example.com/v1/"))
     assert_demo_safe(make_settings(executor="docker", allow_dev=True))
+
+
+def test_demo_refuses_personal_mode() -> None:
+    with pytest.raises(ConfigError, match="FIXPROOF_PROVIDER=nvidia"):
+        assert_demo_safe(make_settings(provider="nvidia"))
+    assert_demo_safe(make_settings(provider="nvidia", allow_dev=True))

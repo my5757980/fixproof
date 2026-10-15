@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from typer.testing import CliRunner
 
 from fixproof import cli
 from fixproof.bench.runner import (
+    BenchResults,
     BenchRow,
     BenchRunner,
     BenchServices,
@@ -229,6 +231,25 @@ def test_summary_math() -> None:
     assert s.within_15_min == pytest.approx(0.6)
     assert s.within_max == pytest.approx(0.8)  # 950 s is within 900 s plus the reporting grace
     assert s.cost_usd == pytest.approx(0.5)
+
+
+def test_personal_mode_results_say_they_are_not_the_hackathon_platform() -> None:
+    settings = make_settings(provider="nvidia", executor="docker")
+    results = BenchResults(
+        created_at=datetime(2026, 10, 15, tzinfo=UTC),
+        tasks_file="bench/tasks.toml",
+        executor="docker",
+        models=settings.models_by_role(),
+        budget=settings.budget_cli(),
+        parallel=1,
+        compare_single=False,
+        dev_only=settings.platform_note() is not None,
+        platform_note=settings.platform_note(),
+        rows=[make_row(OutcomeLabel.VERIFIED, 60)],
+    )
+    summary = render_summary(results)
+    assert "**Not the hackathon platform" in summary and "NVIDIA" in summary
+    assert "do not present them as hackathon results" in summary
 
 
 def test_percentile_uses_the_nearest_rank() -> None:

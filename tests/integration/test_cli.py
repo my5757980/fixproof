@@ -170,6 +170,17 @@ def test_doctor_names_the_missing_key_and_exits_6(monkeypatch: pytest.MonkeyPatc
     assert "fix: Create a key at https://tokenfactory.nebius.com" in result.stdout
 
 
+def test_doctor_in_personal_mode_names_the_nvidia_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(provider="nvidia", nebius_api_key=None, executor="docker")
+    monkeypatch.setattr(cli, "factories", doctor_factories(settings))
+    result = invoke("doctor", "--json")
+    checks = {c["name"]: c for c in json.loads(result.stdout)}
+    assert checks["NVIDIA_API_KEY"]["ok"] is False
+    assert "build.nvidia.com" in checks["NVIDIA_API_KEY"]["hint"]
+    endpoint = checks["Model endpoint"]
+    assert endpoint["ok"] is True and "not the hackathon platform" in endpoint["detail"]
+
+
 def test_doctor_passes_when_everything_is_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "factories", doctor_factories(make_settings()))
     result = invoke("doctor")
