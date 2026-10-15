@@ -258,7 +258,7 @@ A long command or model call therefore never delays a stop beyond 10 seconds.
 | D9 | Two-stage plan: initial (≤ 30 s, from the task and the GitHub tree) and refined (after the baseline); stop cancels in-flight work within 10 s | Spec SC-006 |
 | D10 | Bounded retries with exponential backoff (3 tries) for transient sandbox API errors, matching the model client (Constitution III) | R4 |
 | D11 | Demo stop requires a per-run control token (only its hash is stored); the daily budget includes estimated sandbox cost and lives in `FIXPROOF_STATE_DIR` | R11 |
-| D12 | Personal mode (FR-024, constitution 2.1.0): `FIXPROOF_PROVIDER=nvidia` switches the defaults to NVIDIA's API (`https://integrate.api.nvidia.com/v1`, `NVIDIA_API_KEY`) and Nemotron IDs for the same roles, priced at $0 (NVIDIA's free tier); explicitly set values still win; `doctor`, reports, and benchmark summaries say "not the hackathon platform"; `serve` keeps refusing it unless `FIXPROOF_ALLOW_DEV=1` | Constitution 2.1.0 |
+| D12 | Personal mode (FR-024, constitution 2.1.0): `FIXPROOF_PROVIDER=nvidia` switches the defaults to NVIDIA's API (`https://integrate.api.nvidia.com/v1`, `NVIDIA_API_KEY`) and Nemotron IDs for the same roles, priced at $0 (NVIDIA's free tier); explicitly set values still win; `doctor`, reports, and benchmark summaries say "not the hackathon platform"; `serve` keeps refusing it unless `FIXPROOF_ALLOW_DEV=1` | Constitution 2.1.0, ADR-0009 |
 
 These decisions are recorded as ADRs in `history/adr/`: D1 → ADR-0001, D2 → ADR-0002,
 D3/D4/D10 → ADR-0003, D5 → ADR-0004, D9 → ADR-0005, D6 → ADR-0006, D7 → ADR-0007, and

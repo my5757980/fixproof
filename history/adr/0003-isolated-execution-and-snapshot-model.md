@@ -2,7 +2,8 @@
 
 > **Scope**: Document decision clusters, not individual technology choices. Group related decisions that work together (e.g., "Frontend Stack" not separate ADRs for framework, styling, deployment).
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by ADR-0009: the Docker executor is also the personal-mode
+  executor; the demo and the video still use Token Factory Sandboxes)
 - **Date:** 2026-10-11
 - **Feature:** 001-verified-fix-agent
 - **Context:** Repository code is untrusted and must never run on the host, the user's working

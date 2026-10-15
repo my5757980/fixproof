@@ -2,7 +2,9 @@
 
 > **Scope**: Document decision clusters, not individual technology choices. Group related decisions that work together (e.g., "Frontend Stack" not separate ADRs for framework, styling, deployment).
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by ADR-0009 outside the hackathon configuration: personal mode
+  may use NVIDIA's own API when explicitly selected; this ADR still governs the hackathon
+  configuration)
 - **Date:** 2026-10-11
 - **Feature:** 001-verified-fix-agent
 - **Context:** The hackathon rules require every model call in the agent loop to use NVIDIA open
