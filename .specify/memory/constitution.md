@@ -1,55 +1,47 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.0.0 → 2.0.0
-Bump rationale: MAJOR. The safety model is redefined (per-action approval → autonomous execution
-inside Token Factory Sandboxes, with human approval at the boundary), and Principle II is
-redefined around the autonomous plan → write → run/test → iterate loop that judges reward.
-Both changes come from a line-by-line review of the official hackathon pages on 2026-10-03.
+Version change: 2.0.0 → 2.1.0
+Bump rationale: MINOR. A new section (Personal Mode) adds a scoped allowance outside the
+hackathon configuration, and the amendment rule is expanded to permit such owner-decided modes.
+Every rule for the hackathon configuration is unchanged, so every artifact that complied with
+2.0.0 still complies; nothing is removed or made stricter.
 
-Sources reviewed on 2026-10-03:
-  - https://nebiusglobalaihackathon.devpost.com/ (overview, tracks, submission, prizes, judging)
-  - https://nebiusglobalaihackathon.devpost.com/rules
-  - https://nebiusglobalaihackathon.devpost.com/resources
-  - https://nebiusglobalaihackathon.devpost.com/updates (judging, winning-project, kickoff posts)
-  - https://nebiusglobalaihackathon.devpost.com/forum_topics (access, credits, judging uptime)
-  - https://docs.tokenfactory.nebius.com (inference API, function calling, Sandboxes)
+Source of this amendment (project owner's decision, 2026-10-15): Nebius Token Factory billing is
+unavailable in Pakistan, and the support thread in the Nebius Discord
+(#token-factory-support, opened 2026-10-10) has had no staff reply. The owner decided FixProof
+must be complete and usable for personal work even if the hackathon submission does not happen.
+The hackathon rules themselves did not change.
 
 Modified principles:
-  - I. Hackathon Eligibility & Platform Compliance — expanded: runtime definition from the
-    rules, code execution in Token Factory Sandboxes, model roles and same-provider fallback,
-    development-only endpoint override, accepted licenses, newly created project
-  - II. Real Developer Usefulness Over Demo Features → II. Autonomous, Verified Work on Real
-    Repositories — redefined around the judged agent loop and the four judging criteria
-  - III. Simple, Reliable Architecture — sandbox delegation, run budgets, checkpoints
-  - IV. Transparent Tool Use & Agent Reasoning — live progress view; sandbox IDs in the trace
-  - V. Production-Quality, Documented Code — fake sandbox executor in tests
-  - VI. Reproducibility & a Strong README → VI. Reproducibility, README & Judge Access
+  - I. Hackathon Eligibility & Platform Compliance — scope stated (it governs the hackathon
+    configuration); the endpoint and executor bullets name personal mode as the only other
+    explicitly selected setup. No hackathon rule is relaxed.
 
-Added sections: Hackathon Submission Requirements
-Redefined sections: Security & Safety Requirements; Development Workflow & Quality Gates
-  (pre-submission gate expanded)
+Added sections:
+  - Personal Mode (outside the hackathon): NVIDIA's own API (build.nvidia.com) for Nemotron
+    models and the local Docker executor, selected explicitly, always labeled, never a fallback.
+Modified sections:
+  - Governance — the amendment rule allows owner-decided modes outside the hackathon
+    configuration, provided they never relax it, recorded with the owner's decision and date.
 Removed sections: none
 
 Templates and guidance:
-  ✅ .specify/templates/plan-template.md — gates and Technical Context updated for v2.0.0
-  ✅ .specify/templates/spec-template.md — developer job plus audience/problem per story
-  ✅ .specify/templates/tasks-template.md — fake sandbox executor, Sandboxes config,
-     submission-package task
-  ✅ .claude/commands/sp.tasks.md — required tests include the fake sandbox executor
-  ✅ CLAUDE.md, remaining templates and commands — reviewed; no change needed
-  ⚠ README.md, LICENSE, docs/feedback.md — not created yet; all required before submission
-  ⚠ .specify/scripts/bash/create-phr.sh — still absent; PHRs are written agent-natively
+  ✅ .specify/templates/plan-template.md — Constitution Check I mentions personal mode
+  ✅ .specify/templates/tasks-template.md — configuration task mentions the personal-mode
+     provider
+  ✅ .specify/templates/spec-template.md — reviewed; no change needed
+  ✅ CLAUDE.md, .claude/commands/*.md — reviewed; no change needed
+  ⚠ README.md, .env.example, specs/001-verified-fix-agent (spec, plan, tasks) — updated by the
+     personal-mode implementation that follows this amendment
 
 Follow-up TODOs:
-  - The project name is still a working title; the organizers ask for a memorable name that
-    reflects what the project does. Rename through a PATCH amendment.
-  - Confirm Token Factory billing access for every team member; Nebius support stated on the
-    hackathon forum that billing registration is unavailable in some countries, including
-    Pakistan.
-  - Request Token Factory Sandboxes beta access: https://tokenfactory.nebius.com/sandboxes/about
-  - /sp.plan research MUST confirm the exact Nemotron 3 model IDs and their tool-calling support.
+  - Confirm the NVIDIA API model IDs for each role with `fixproof doctor` once a key exists
+    (third-party documentation lists nvidia/nemotron-3-ultra-550b-a55b and
+    nvidia/nemotron-3-super-120b-a12b at https://integrate.api.nvidia.com/v1).
+  - The project name is still a working title (rename through a PATCH amendment).
 -->
+
 
 # Nebius x NVIDIA Coding Agent Constitution
 
@@ -62,17 +54,22 @@ This project is a submission to the Nebius x NVIDIA Global AI Hackathon, track
 run, and test code in Token Factory." Stage One judging is a pass/fail check that the project
 fits the theme and applies the required APIs and SDKs; breaking a rule below risks failing it.
 
+These rules govern the **hackathon configuration**: the shipped default configuration, the
+hosted demo, the demo video, published benchmark results, and the Devpost submission. The
+explicitly selected personal mode is governed by *Personal Mode (outside the hackathon)*.
+
 - The agent MUST make its LLM calls at runtime to the **Nebius Token Factory** inference API
   (OpenAI-compatible), or run on **Nebius AI Cloud** compute, as the official rules define
   "runs on". The shipped default configuration, the hosted demo, and the demo video MUST use
   Nebius.
 - An endpoint override MAY exist for local development only (for example, while Token Factory
   access is pending). No non-Nebius endpoint may be hardcoded, set as a default, or used as an
-  automatic fallback.
+  automatic fallback. The only other built-in endpoint is personal mode's NVIDIA API, used only
+  when personal mode is explicitly selected.
 - The agent MUST run and test code inside **Nebius Token Factory Sandboxes**. If Sandboxes
   access is unavailable, an ADR MUST record the replacement, and code MUST still run on Nebius
   infrastructure (for example, Nebius AI Cloud compute). Other executors MAY exist only for
-  offline tests and local development; the demo and video MUST use Sandboxes.
+  offline tests, local development, and personal mode; the demo and video MUST use Sandboxes.
 - The core agent loop (planning, tool selection, and code generation) MUST run on an
   **NVIDIA open-source model**, with the Nemotron family preferred. Following the organizers'
   guidance, models SHOULD be assigned by role: a stronger reasoning model (for example,
@@ -295,6 +292,34 @@ change. Judging runs from 2026-12-01 to 2026-12-15, and winners are announced on
 - Feature work SHOULD freeze by 2026-10-23, leaving the final week for the demo video, README,
   feedback, judge-access checks, and submission.
 
+## Personal Mode (outside the hackathon)
+
+FixProof MUST also be usable for the owner's own work when the hackathon platform is not
+available. Personal mode is that setup; it never changes the hackathon configuration.
+
+- **Explicit selection only**: personal mode is selected in configuration
+  (`FIXPROOF_PROVIDER=nvidia`, usually with `FIXPROOF_EXECUTOR=docker`). It MUST NOT be the
+  shipped default and MUST NOT be used as an automatic fallback when Nebius fails.
+- **Models**: LLM calls go to NVIDIA's own OpenAI-compatible API
+  (`https://integrate.api.nvidia.com/v1`, keys from build.nvidia.com in `NVIDIA_API_KEY`). The
+  core agent loop MUST still run on NVIDIA Nemotron models assigned by role (a strong reasoning
+  model as planner, a capable worker, a small fallback). Model IDs and the endpoint come from
+  configuration, and `fixproof doctor` MUST verify the IDs against the endpoint's model list.
+- **Execution**: code runs in the local Docker executor, with the same sandbox rules: no host
+  directories mounted, no network for commands the model starts, timeouts and output limits on
+  every command.
+- **Labels**: everything that shows results in personal mode (`doctor`, run reports, benchmark
+  summaries) MUST state that it is not the hackathon platform. Personal-mode results MUST NOT be
+  presented as hackathon results (demo, video, published benchmark, or submission), and the
+  hosted demo refuses personal-mode settings unless `FIXPROOF_ALLOW_DEV=1` is set for local
+  testing.
+- **Secrets**: `NVIDIA_API_KEY` follows the Security & Safety Requirements exactly like every
+  other key (configuration only, redacted from traces and logs, never sent into a sandbox).
+- Principles II to VI apply unchanged.
+
+**Rationale**: Nebius Token Factory billing is unavailable in some countries, including the
+owner's. Personal mode keeps the agent useful without weakening a single hackathon rule.
+
 ## Development Workflow & Quality Gates
 
 - **Spec-driven flow**: Every feature MUST go through `/sp.specify` → `/sp.plan` → `/sp.tasks`
@@ -335,10 +360,13 @@ change. Judging runs from 2026-12-01 to 2026-12-15, and winners are announced on
   conflict appears, the conflicting artifact is corrected.
 - **Amendments** MUST be made through `/sp.constitution` and MUST include an updated Sync Impact
   Report, a version bump, an updated Last Amended date, propagation to dependent templates, and
-  a PHR under `history/prompts/constitution/`. Principle I and the Hackathon Submission
-  Requirements change only when the official hackathon rules or organizer guidance change, and
-  such an amendment MUST cite the source. Hackathon facts here were checked against the official
-  pages on 2026-10-03 and MUST be rechecked before submission.
+  a PHR under `history/prompts/constitution/`. The hackathon rules in Principle I and the
+  Hackathon Submission Requirements change only when the official hackathon rules or organizer
+  guidance change, and such an amendment MUST cite the source. The project owner MAY add or
+  change modes outside the hackathon configuration (such as Personal Mode) as long as they never
+  relax it; such an amendment MUST record the owner's decision and its date. Hackathon facts
+  here were checked against the official pages on 2026-10-03 and MUST be rechecked before
+  submission.
 - **Versioning** follows semantic versioning:
   - MAJOR: removing or redefining a principle, or any backward-incompatible governance change.
   - MINOR: adding a principle or section, or materially expanding existing guidance.
@@ -348,4 +376,4 @@ change. Judging runs from 2026-12-01 to 2026-12-15, and winners are announced on
   Deviations MUST be justified in the plan's Complexity Tracking table, and architecturally
   significant ones MUST be proposed as ADRs.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-03
+**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15

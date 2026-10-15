@@ -67,7 +67,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T006 [P] Setup API routing and middleware structure
 - [ ] T007 Create base models/entities that all stories depend on
 - [ ] T008 Configure error handling, logging, and session trace (tool-call) infrastructure
-- [ ] T009 Setup environment configuration management (Nebius endpoint, model IDs per role, Sandboxes settings, API key via `.env`; commit `.env.example`)
+- [ ] T009 Setup environment configuration management (Nebius endpoint, model IDs per role, Sandboxes settings, the personal-mode provider if used, API keys via `.env`; commit `.env.example`)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
