@@ -40,8 +40,11 @@ def assert_demo_safe(settings: Settings) -> None:
     if settings.allow_dev:
         return
     problems = []
-    if settings.is_personal_mode():
-        problems.append("FIXPROOF_PROVIDER=nvidia is personal mode (NVIDIA's API), not Nebius")
+    personal = settings.personal_provider()
+    if personal is not None:
+        problems.append(
+            f"FIXPROOF_PROVIDER={personal.name} is personal mode ({personal.label}), not Nebius"
+        )
     if settings.executor != "contree":
         problems.append(f"FIXPROOF_EXECUTOR={settings.executor} is for local development only")
     if settings.is_dev_endpoint():

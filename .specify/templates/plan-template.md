@@ -41,7 +41,8 @@ justified in Complexity Tracking before proceeding.
   by default; code runs and is tested in Token Factory Sandboxes; the core agent loop runs on
   an NVIDIA open-source model (Nemotron preferred), with models assigned by role; model IDs,
   endpoints, and keys come from configuration; dependencies are MIT-compatible. Personal mode
-  (NVIDIA API, local Docker) is used only when explicitly selected and is always labeled.
+  (NVIDIA API or OpenRouter, local Docker) is used only when explicitly selected and is always
+  labeled.
 - [ ] **II. Autonomous & verified**: The feature advances the plan → write → run/test → iterate
   loop on real repositories, names its developer job, audience, and problem, reports success
   only with sandbox evidence, and has no canned or mocked behavior in the shipped path.

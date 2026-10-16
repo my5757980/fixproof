@@ -6,6 +6,7 @@ hardcoded in the agent. ``.env.example`` documents each variable.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -41,11 +42,52 @@ NVIDIA_PRICES: dict[str, tuple[float, float]] = {
     model: (0.0, 0.0)
     for model in (NVIDIA_PLANNER_MODEL, NVIDIA_WORKER_MODEL, NVIDIA_FALLBACK_MODEL)
 }
-_PERSONAL_DEFAULTS = {
-    "nebius_base_url": NVIDIA_API_URL,
-    "planner_model": NVIDIA_PLANNER_MODEL,
-    "worker_model": NVIDIA_WORKER_MODEL,
-    "fallback_model": NVIDIA_FALLBACK_MODEL,
+
+# Personal mode through OpenRouter (constitution 2.2.0): the same NVIDIA Nemotron models as free
+# ":free" variants, listed by https://openrouter.ai/api/v1/models on 2026-10-15. Free variants
+# have request limits per day; any other OpenRouter model is billed and needs FIXPROOF_PRICES.
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/"
+OPENROUTER_PLANNER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+OPENROUTER_WORKER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+OPENROUTER_FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning:free"
+_FREE_SUFFIX = ":free"
+
+
+@dataclass(frozen=True)
+class PersonalProvider:
+    """A personal-mode model provider: its endpoint, key, and NVIDIA Nemotron model IDs."""
+
+    name: str
+    label: str
+    base_url: str
+    key_variable: str
+    key_page: str
+    planner_model: str
+    worker_model: str
+    fallback_model: str
+
+
+PERSONAL_PROVIDERS = {
+    "nvidia": PersonalProvider(
+        name="nvidia",
+        label="NVIDIA's API",
+        base_url=NVIDIA_API_URL,
+        key_variable="NVIDIA_API_KEY",
+        key_page="https://build.nvidia.com/settings/api-keys",
+        planner_model=NVIDIA_PLANNER_MODEL,
+        worker_model=NVIDIA_WORKER_MODEL,
+        fallback_model=NVIDIA_FALLBACK_MODEL,
+    ),
+    "openrouter": PersonalProvider(
+        name="openrouter",
+        label="OpenRouter",
+        base_url=OPENROUTER_API_URL,
+        key_variable="OPENROUTER_API_KEY",
+        key_page="https://openrouter.ai/settings/keys",
+        planner_model=OPENROUTER_PLANNER_MODEL,
+        worker_model=OPENROUTER_WORKER_MODEL,
+        fallback_model=OPENROUTER_FALLBACK_MODEL,
+    ),
 }
 
 
@@ -64,13 +106,17 @@ class Settings(BaseSettings):
         validate_by_alias=True,
     )
 
-    # Model provider: nebius (the hackathon configuration) or nvidia (personal mode, FR-024)
-    provider: Literal["nebius", "nvidia"] = Field(
+    # Model provider: nebius (the hackathon configuration), or nvidia or openrouter (personal
+    # mode, FR-024)
+    provider: Literal["nebius", "nvidia", "openrouter"] = Field(
         default="nebius", validation_alias="FIXPROOF_PROVIDER"
     )
     nvidia_api_key: SecretStr | None = Field(default=None, validation_alias="NVIDIA_API_KEY")
+    openrouter_api_key: SecretStr | None = Field(
+        default=None, validation_alias="OPENROUTER_API_KEY"
+    )
 
-    # Nebius Token Factory (inference). In personal mode the base URL defaults to NVIDIA's API.
+    # Nebius Token Factory (inference). In personal mode the base URL defaults to the provider's.
     nebius_api_key: SecretStr | None = Field(default=None, validation_alias="NEBIUS_API_KEY")
     nebius_base_url: str = Field(default=TOKEN_FACTORY_URL, validation_alias="NEBIUS_BASE_URL")
 
@@ -131,37 +177,63 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _apply_provider_defaults(self) -> Settings:
-        """In personal mode, default the endpoint and models to NVIDIA's API.
+        """In personal mode, default the endpoint and models to the provider's.
 
         Values set explicitly (in the environment, ``.env``, or by name) always win.
         """
-        if self.is_personal_mode():
-            for name, value in _PERSONAL_DEFAULTS.items():
+        personal = self.personal_provider()
+        if personal is not None:
+            defaults = {
+                "nebius_base_url": personal.base_url,
+                "planner_model": personal.planner_model,
+                "worker_model": personal.worker_model,
+                "fallback_model": personal.fallback_model,
+            }
+            for name, value in defaults.items():
                 if name not in self.model_fields_set:
                     setattr(self, name, value)
         return self
 
+    def personal_provider(self) -> PersonalProvider | None:
+        """Return the personal-mode provider (FR-024), or ``None`` for Nebius Token Factory."""
+        return PERSONAL_PROVIDERS.get(self.provider)
+
     def is_personal_mode(self) -> bool:
-        """Return whether personal mode (NVIDIA's API, FR-024) is selected."""
-        return self.provider == "nvidia"
+        """Return whether personal mode (NVIDIA's API or OpenRouter, FR-024) is selected."""
+        return self.personal_provider() is not None
 
     def api_key_variable(self) -> str:
         """Return the name of the variable that holds the model API key."""
-        return "NVIDIA_API_KEY" if self.is_personal_mode() else "NEBIUS_API_KEY"
+        personal = self.personal_provider()
+        return personal.key_variable if personal is not None else "NEBIUS_API_KEY"
+
+    def api_key_page(self) -> str:
+        """Return the page where the model API key is created."""
+        personal = self.personal_provider()
+        return personal.key_page if personal is not None else "https://tokenfactory.nebius.com"
+
+    def api_key(self) -> str:
+        """Return the model API key of the selected provider, or ``""`` if it is not set."""
+        keys = {
+            "nebius": self.nebius_api_key,
+            "nvidia": self.nvidia_api_key,
+            "openrouter": self.openrouter_api_key,
+        }
+        return _secret(keys[self.provider])
 
     def require_api_key(self) -> str:
-        """Return the model API key: Token Factory's, or NVIDIA's in personal mode.
+        """Return the model API key: Token Factory's, or the personal-mode provider's.
 
         Raises:
             ConfigError: If the key is not set; the message names the variable to set.
         """
-        if self.is_personal_mode():
-            value = _secret(self.nvidia_api_key)
+        personal = self.personal_provider()
+        if personal is not None:
+            value = self.api_key()
             if not value:
                 raise ConfigError(
-                    "NVIDIA_API_KEY is not set. Create a key at "
-                    "https://build.nvidia.com/settings/api-keys and add NVIDIA_API_KEY=... to "
-                    "your .env file (personal mode)."
+                    f"{personal.key_variable} is not set. Create a key at {personal.key_page} "
+                    f"and add {personal.key_variable}=... to your .env file (personal mode)."
                 )
             return value
         value = _secret(self.nebius_api_key)
@@ -203,11 +275,13 @@ class Settings(BaseSettings):
     def is_dev_endpoint(self) -> bool:
         """Return whether the endpoint is not the selected provider's own (dev-only use).
 
-        The provider's own endpoint is Nebius Token Factory, or in personal mode NVIDIA's API.
+        The provider's own endpoint is Nebius Token Factory, or in personal mode NVIDIA's API or
+        OpenRouter.
         """
         host = (urlparse(self.nebius_base_url).hostname or "").lower()
-        if self.is_personal_mode():
-            return host != urlparse(NVIDIA_API_URL).hostname
+        personal = self.personal_provider()
+        if personal is not None:
+            return host != urlparse(personal.base_url).hostname
         is_token_factory = host.endswith(".nebius.com") and host.startswith("api.tokenfactory.")
         return not is_token_factory
 
@@ -221,8 +295,9 @@ class Settings(BaseSettings):
         )
         if on_platform:
             return None
-        if self.is_personal_mode() and not self.is_dev_endpoint():
-            models = "NVIDIA's API (personal mode)"
+        personal = self.personal_provider()
+        if personal is not None and not self.is_dev_endpoint():
+            models = f"{personal.label} (personal mode)"
         elif self.is_dev_endpoint():
             models = f"a development endpoint ({self.nebius_base_url})"
         else:
@@ -235,6 +310,7 @@ class Settings(BaseSettings):
         candidates = (
             self.nebius_api_key,
             self.nvidia_api_key,
+            self.openrouter_api_key,
             self.contree_token,
             self.github_token,
             self.tavily_api_key,
@@ -277,13 +353,17 @@ class Settings(BaseSettings):
     def price_table(self) -> dict[str, tuple[float, float]]:
         """Return prices per 1M tokens keyed by lowercase model ID, with overrides applied.
 
-        The defaults are the provider's: Token Factory prices, or $0 for NVIDIA's API (also for
-        any other model configured for a role in personal mode).
+        The defaults are the provider's: Token Factory prices; $0 for NVIDIA's API (also for any
+        other model configured for a role); on OpenRouter, $0 for the free ``:free`` variants
+        only, so a billed model needs a price in ``FIXPROOF_PRICES``.
         """
-        if self.is_personal_mode():
+        roles = (self.planner_model, self.worker_model, self.fallback_model)
+        if self.provider == "nvidia":
             table = dict(NVIDIA_PRICES)
-            roles = (self.planner_model, self.worker_model, self.fallback_model)
             table.update({model.lower(): (0.0, 0.0) for model in roles})
+        elif self.provider == "openrouter":
+            free = (model for model in roles if model.lower().endswith(_FREE_SUFFIX))
+            table = {model.lower(): (0.0, 0.0) for model in free}
         else:
             table = dict(DEFAULT_PRICES)
         table.update({model.lower(): price for model, price in self.prices.items()})

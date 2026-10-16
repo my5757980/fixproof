@@ -93,7 +93,7 @@ class ModelUnavailableError(RuntimeError):
 
     def __init__(self, role: ModelRole, failures: Sequence[str]) -> None:
         super().__init__(
-            f"No {role.value} model is available on Nebius Token Factory: " + "; ".join(failures)
+            f"No {role.value} model is available on the model endpoint: " + "; ".join(failures)
         )
         self.role = role
         self.failures = list(failures)

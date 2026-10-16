@@ -741,13 +741,8 @@ def doctor(
 async def _doctor_checks(settings: Settings) -> list[Check]:
     checks: list[Check] = []
     personal = settings.is_personal_mode()
-    secret = settings.nvidia_api_key if personal else settings.nebius_api_key
-    key = secret.get_secret_value() if secret else ""
-    where = (
-        "https://build.nvidia.com/settings/api-keys"
-        if personal
-        else "https://tokenfactory.nebius.com"
-    )
+    key = settings.api_key()
+    where = settings.api_key_page()
     variable = settings.api_key_variable()
     checks.append(
         Check(
@@ -790,16 +785,24 @@ async def _model_checks(settings: Settings) -> list[Check]:
                 f"Check {settings.api_key_variable()} and that the account is active.",
             )
         ]
+    prices = settings.price_table()
     checks = []
     for role, model_id in settings.models_by_role().items():
-        ok = model_id.lower() in available
-        hint = (
-            ""
-            if ok
-            else f"{model_id} is not listed by {settings.nebius_base_url}models; set "
-            f"{_ROLE_VARIABLES[role]} to a listed NVIDIA Nemotron model."
-        )
-        checks.append(Check(f"Model ({role})", ok, model_id, hint))
+        listed = model_id.lower() in available
+        priced = model_id.lower() in prices
+        if not listed:
+            hint = (
+                f"{model_id} is not listed by {settings.nebius_base_url}models; set "
+                f"{_ROLE_VARIABLES[role]} to a listed NVIDIA Nemotron model."
+            )
+        elif not priced:
+            hint = (
+                f"{model_id} has no price, so cost budgets cannot be enforced; add it to "
+                f'FIXPROOF_PRICES as {{"{model_id}": [input_usd_per_1m, output_usd_per_1m]}}.'
+            )
+        else:
+            hint = ""
+        checks.append(Check(f"Model ({role})", listed and priced, model_id, hint))
     return checks
 
 

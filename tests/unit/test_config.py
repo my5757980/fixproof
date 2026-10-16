@@ -34,8 +34,10 @@ ENV_VARS = [
     "FIXPROOF_STATE_DIR",
     "FIXPROOF_PROVIDER",
     "NVIDIA_API_KEY",
+    "OPENROUTER_API_KEY",
 ]
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/"
 
 
 @pytest.fixture
@@ -186,7 +188,50 @@ def test_personal_mode_prices_its_models_at_zero(clean_env: None) -> None:
 
 def test_unknown_providers_are_rejected(clean_env: None) -> None:
     with pytest.raises(ValueError, match="(?i)provider"):
-        make(provider="openrouter")
+        make(provider="acme")
+
+
+# -- personal mode through OpenRouter (constitution 2.2.0) -----------------------------------
+
+
+def test_openrouter_switches_to_the_free_nemotron_models(clean_env: None) -> None:
+    s = make(provider="openrouter")
+    assert s.is_personal_mode() and s.nebius_base_url == OPENROUTER_URL
+    assert s.planner_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert s.worker_model == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert s.fallback_model == "nvidia/nemotron-3.5-lightning:free"
+    assert not s.is_dev_endpoint()
+    assert make(provider="openrouter", nebius_base_url=NVIDIA_URL).is_dev_endpoint()
+    assert make(nebius_base_url=OPENROUTER_URL).is_dev_endpoint()
+
+
+def test_openrouter_uses_its_own_key(clean_env: None) -> None:
+    with pytest.raises(ConfigError, match=r"OPENROUTER_API_KEY.*openrouter\.ai/settings/keys"):
+        make(provider="openrouter", nvidia_api_key="nvapi-other-123456").require_api_key()
+    s = make(provider="openrouter", openrouter_api_key="sk-or-v1-test-123456")
+    assert s.require_api_key() == "sk-or-v1-test-123456" and s.api_key() == "sk-or-v1-test-123456"
+    assert s.api_key_variable() == "OPENROUTER_API_KEY"
+    assert "sk-or-v1-test-123456" in s.secret_values()
+
+
+def test_openrouter_prices_only_free_variants_at_zero(clean_env: None) -> None:
+    table = make(provider="openrouter").price_table()
+    assert table["nvidia/nemotron-3-super-120b-a12b:free"] == (0.0, 0.0)
+    assert table["nvidia/nemotron-3.5-lightning:free"] == (0.0, 0.0)
+    billed = make(provider="openrouter", worker_model="nvidia/nemotron-3-super-120b-a12b")
+    assert "nvidia/nemotron-3-super-120b-a12b" not in billed.price_table()
+    priced = make(
+        provider="openrouter",
+        worker_model="nvidia/nemotron-3-super-120b-a12b",
+        prices={"nvidia/nemotron-3-super-120b-a12b": (0.08, 0.45)},
+    )
+    assert priced.price_table()["nvidia/nemotron-3-super-120b-a12b"] == (0.08, 0.45)
+
+
+def test_openrouter_is_labelled_as_personal_mode(clean_env: None) -> None:
+    note = make(provider="openrouter", executor="docker").platform_note()
+    assert note is not None and "not the hackathon platform" in note.lower()
+    assert "OpenRouter (personal mode)" in note and "local Docker" in note
 
 
 def test_the_env_examples_cover_every_setting(clean_env: None) -> None:

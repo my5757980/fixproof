@@ -181,6 +181,36 @@ def test_doctor_in_personal_mode_names_the_nvidia_key(monkeypatch: pytest.Monkey
     assert endpoint["ok"] is True and "not the hackathon platform" in endpoint["detail"]
 
 
+def test_doctor_with_openrouter_names_the_openrouter_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(provider="openrouter", nebius_api_key=None, executor="docker")
+    monkeypatch.setattr(cli, "factories", doctor_factories(settings))
+    result = invoke("doctor", "--json")
+    checks = {c["name"]: c for c in json.loads(result.stdout)}
+    assert checks["OPENROUTER_API_KEY"]["ok"] is False
+    assert "openrouter.ai/settings/keys" in checks["OPENROUTER_API_KEY"]["hint"]
+    endpoint = checks["Model endpoint"]
+    assert endpoint["ok"] is True and endpoint["detail"].startswith("https://openrouter.ai/")
+    assert "not the hackathon platform" in endpoint["detail"]
+
+
+def test_doctor_flags_a_billed_openrouter_model_without_a_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    billed = "nvidia/nemotron-3-super-120b-a12b"
+    settings = make_settings(
+        provider="openrouter",
+        openrouter_api_key="sk-or-v1-test-123456",
+        worker_model=billed,
+        executor="docker",
+    )
+    listed = FakeModelClient([*settings.models_by_role().values()])
+    monkeypatch.setattr(cli, "factories", doctor_factories(settings, listed))
+    checks = {c["name"]: c for c in json.loads(invoke("doctor", "--json").stdout)}
+    assert checks["Model (planner)"]["ok"] is True
+    assert checks["Model (worker)"]["ok"] is False
+    assert "FIXPROOF_PRICES" in checks["Model (worker)"]["hint"]
+
+
 def test_doctor_passes_when_everything_is_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "factories", doctor_factories(make_settings()))
     result = invoke("doctor")

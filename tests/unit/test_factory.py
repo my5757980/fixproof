@@ -37,4 +37,6 @@ def test_demo_accepts_only_nebius_settings() -> None:
 def test_demo_refuses_personal_mode() -> None:
     with pytest.raises(ConfigError, match="FIXPROOF_PROVIDER=nvidia"):
         assert_demo_safe(make_settings(provider="nvidia"))
+    with pytest.raises(ConfigError, match=r"FIXPROOF_PROVIDER=openrouter .*OpenRouter"):
+        assert_demo_safe(make_settings(provider="openrouter"))
     assert_demo_safe(make_settings(provider="nvidia", allow_dev=True))

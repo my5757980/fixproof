@@ -1,44 +1,42 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 2.0.0 → 2.1.0
-Bump rationale: MINOR. A new section (Personal Mode) adds a scoped allowance outside the
-hackathon configuration, and the amendment rule is expanded to permit such owner-decided modes.
-Every rule for the hackathon configuration is unchanged, so every artifact that complied with
-2.0.0 still complies; nothing is removed or made stricter.
+Version change: 2.1.0 → 2.2.0
+Bump rationale: MINOR. Existing guidance is materially expanded: Personal Mode gains a second
+provider, OpenRouter. Every rule for the hackathon configuration is unchanged, so every artifact
+that complied with 2.1.0 still complies; nothing is removed or relaxed.
 
-Source of this amendment (project owner's decision, 2026-10-15): Nebius Token Factory billing is
-unavailable in Pakistan, and the support thread in the Nebius Discord
-(#token-factory-support, opened 2026-10-10) has had no staff reply. The owner decided FixProof
-must be complete and usable for personal work even if the hackathon submission does not happen.
-The hackathon rules themselves did not change.
+Source of this amendment (project owner's decision, 2026-10-15): the owner's account on
+build.nvidia.com cannot create API keys ("API Access Unavailable - Please contact support to
+verify your account access"). The owner is emailing NVIDIA support on 2026-10-15; NVIDIA
+developer-forum reports say such replies often take one to two weeks or longer. OpenRouter
+serves the same NVIDIA Nemotron models as free ":free" variants (checked in
+https://openrouter.ai/api/v1/models on 2026-10-15: nvidia/nemotron-3-ultra-550b-a55b:free,
+nvidia/nemotron-3-super-120b-a12b:free, nvidia/nemotron-3.5-lightning:free, all with tool calls;
+free variants have a per-day request limit). The hackathon rules themselves did not change.
 
 Modified principles:
-  - I. Hackathon Eligibility & Platform Compliance — scope stated (it governs the hackathon
-    configuration); the endpoint and executor bullets name personal mode as the only other
-    explicitly selected setup. No hackathon rule is relaxed.
+  - I. Hackathon Eligibility & Platform Compliance — the endpoint bullet names both personal-mode
+    providers (NVIDIA's API and OpenRouter) as the only other built-in endpoints. No hackathon
+    rule is relaxed.
 
-Added sections:
-  - Personal Mode (outside the hackathon): NVIDIA's own API (build.nvidia.com) for Nemotron
-    models and the local Docker executor, selected explicitly, always labeled, never a fallback.
 Modified sections:
-  - Governance — the amendment rule allows owner-decided modes outside the hackathon
-    configuration, provided they never relax it, recorded with the owner's decision and date.
+  - Personal Mode (outside the hackathon) — a second provider (OpenRouter, OPENROUTER_API_KEY);
+    no automatic fallback between personal providers either; billed OpenRouter models need an
+    explicit price; labels name the provider. Every other personal-mode rule is unchanged.
+Added sections: none
 Removed sections: none
 
 Templates and guidance:
-  ✅ .specify/templates/plan-template.md — Constitution Check I mentions personal mode
-  ✅ .specify/templates/tasks-template.md — configuration task mentions the personal-mode
-     provider
+  ✅ .specify/templates/plan-template.md — Constitution Check I names both personal providers
+  ✅ .specify/templates/tasks-template.md — reviewed; "the personal-mode provider" already fits
   ✅ .specify/templates/spec-template.md — reviewed; no change needed
   ✅ CLAUDE.md, .claude/commands/*.md — reviewed; no change needed
-  ⚠ README.md, .env.example, specs/001-verified-fix-agent (spec, plan, tasks) — updated by the
-     personal-mode implementation that follows this amendment
+  ⚠ README.md, specs/001-verified-fix-agent (spec FR-024, plan D12, tasks, quickstart) — updated
+     by the OpenRouter implementation that follows this amendment (.env examples already done)
 
 Follow-up TODOs:
-  - Confirm the NVIDIA API model IDs for each role with `fixproof doctor` once a key exists
-    (third-party documentation lists nvidia/nemotron-3-ultra-550b-a55b and
-    nvidia/nemotron-3-super-120b-a12b at https://integrate.api.nvidia.com/v1).
+  - Confirm the model IDs of each provider with `fixproof doctor` once its key exists.
   - The project name is still a working title (rename through a PATCH amendment).
 -->
 
@@ -64,8 +62,8 @@ explicitly selected personal mode is governed by *Personal Mode (outside the hac
   Nebius.
 - An endpoint override MAY exist for local development only (for example, while Token Factory
   access is pending). No non-Nebius endpoint may be hardcoded, set as a default, or used as an
-  automatic fallback. The only other built-in endpoint is personal mode's NVIDIA API, used only
-  when personal mode is explicitly selected.
+  automatic fallback. The only other built-in endpoints are the personal-mode providers'
+  (NVIDIA's API and OpenRouter), used only when personal mode is explicitly selected.
 - The agent MUST run and test code inside **Nebius Token Factory Sandboxes**. If Sandboxes
   access is unavailable, an ADR MUST record the replacement, and code MUST still run on Nebius
   infrastructure (for example, Nebius AI Cloud compute). Other executors MAY exist only for
@@ -298,27 +296,38 @@ FixProof MUST also be usable for the owner's own work when the hackathon platfor
 available. Personal mode is that setup; it never changes the hackathon configuration.
 
 - **Explicit selection only**: personal mode is selected in configuration
-  (`FIXPROOF_PROVIDER=nvidia`, usually with `FIXPROOF_EXECUTOR=docker`). It MUST NOT be the
-  shipped default and MUST NOT be used as an automatic fallback when Nebius fails.
-- **Models**: LLM calls go to NVIDIA's own OpenAI-compatible API
-  (`https://integrate.api.nvidia.com/v1`, keys from build.nvidia.com in `NVIDIA_API_KEY`). The
-  core agent loop MUST still run on NVIDIA Nemotron models assigned by role (a strong reasoning
-  model as planner, a capable worker, a small fallback). Model IDs and the endpoint come from
-  configuration, and `fixproof doctor` MUST verify the IDs against the endpoint's model list.
+  (`FIXPROOF_PROVIDER=nvidia` or `FIXPROOF_PROVIDER=openrouter`, usually with
+  `FIXPROOF_EXECUTOR=docker`). It MUST NOT be the shipped default and MUST NOT be used as an
+  automatic fallback when Nebius fails, and one personal provider MUST NOT fall back
+  automatically to the other.
+- **Models**: LLM calls go to one OpenAI-compatible provider:
+  - NVIDIA's own API (`https://integrate.api.nvidia.com/v1`, keys from build.nvidia.com in
+    `NVIDIA_API_KEY`); or
+  - OpenRouter (`https://openrouter.ai/api/v1`, keys in `OPENROUTER_API_KEY`), which serves the
+    same Nemotron models as free `:free` variants with a per-day request limit. A billed
+    (non-free) OpenRouter model MUST have an explicit price in `FIXPROOF_PRICES` so cost budgets
+    stay correct.
+
+  With either provider, the core agent loop MUST still run on NVIDIA Nemotron models assigned
+  by role (a strong reasoning model as planner, a capable worker, a small fallback). Model IDs
+  and the endpoint come from configuration, and `fixproof doctor` MUST verify the IDs against
+  the endpoint's model list.
 - **Execution**: code runs in the local Docker executor, with the same sandbox rules: no host
   directories mounted, no network for commands the model starts, timeouts and output limits on
   every command.
 - **Labels**: everything that shows results in personal mode (`doctor`, run reports, benchmark
-  summaries) MUST state that it is not the hackathon platform. Personal-mode results MUST NOT be
-  presented as hackathon results (demo, video, published benchmark, or submission), and the
-  hosted demo refuses personal-mode settings unless `FIXPROOF_ALLOW_DEV=1` is set for local
-  testing.
-- **Secrets**: `NVIDIA_API_KEY` follows the Security & Safety Requirements exactly like every
-  other key (configuration only, redacted from traces and logs, never sent into a sandbox).
+  summaries) MUST state that it is not the hackathon platform and name the provider.
+  Personal-mode results MUST NOT be presented as hackathon results (demo, video, published
+  benchmark, or submission), and the hosted demo refuses personal-mode settings unless
+  `FIXPROOF_ALLOW_DEV=1` is set for local testing.
+- **Secrets**: `NVIDIA_API_KEY` and `OPENROUTER_API_KEY` follow the Security & Safety
+  Requirements exactly like every other key (configuration only, redacted from traces and logs,
+  never sent into a sandbox).
 - Principles II to VI apply unchanged.
 
 **Rationale**: Nebius Token Factory billing is unavailable in some countries, including the
-owner's. Personal mode keeps the agent useful without weakening a single hackathon rule.
+owner's, and NVIDIA's API can require a manual account verification first. Personal mode keeps
+the agent useful without weakening a single hackathon rule.
 
 ## Development Workflow & Quality Gates
 
@@ -376,4 +385,4 @@ owner's. Personal mode keeps the agent useful without weakening a single hackath
   Deviations MUST be justified in the plan's Complexity Tracking table, and architecturally
   significant ones MUST be proposed as ADRs.
 
-**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15
+**Version**: 2.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15
