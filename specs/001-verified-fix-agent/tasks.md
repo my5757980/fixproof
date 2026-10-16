@@ -873,10 +873,11 @@ documentation, and the hackathon submission package.
 
 ---
 
-## Phase 8: Personal Mode (FR-024, constitution 2.1.0, plan D12)
+## Phase 8: Personal Mode (FR-024, constitution 2.1.0 and 2.2.0, plan D12 and D13)
 
-**Purpose**: Make FixProof complete and usable without the hackathon platform: NVIDIA's own API
-for Nemotron models and the local Docker executor, selected explicitly and always labeled.
+**Purpose**: Make FixProof complete and usable without the hackathon platform: NVIDIA Nemotron
+models from NVIDIA's own API or OpenRouter, and the local Docker executor, selected explicitly
+and always labeled.
 
 - [X] T092 [P] Write tests in `tests/unit/test_config.py`: `FIXPROOF_PROVIDER=nvidia` switches the
   default base URL to `https://integrate.api.nvidia.com/v1/` and the default model IDs to the
@@ -892,10 +893,23 @@ for Nemotron models and the local Docker executor, selected explicitly and alway
 - [X] T095 Update `.env.example`, the README (a "Personal mode" section: get a key at
   build.nvidia.com, set `FIXPROOF_PROVIDER=nvidia`, `NVIDIA_API_KEY`, and `FIXPROOF_EXECUTOR=docker`;
   run `doctor`), and quickstart.md.
-- [ ] T096 With the user's NVIDIA key: run `fixproof doctor` to confirm the model IDs, then one
-  real `fixproof fix` on a validated benchmark task with the Docker executor; record the result.
-- [ ] T097 Measure where a real Docker run spends its time and speed up the Docker executor on
+- [ ] T096 With the user's personal-mode key (NVIDIA's API, or OpenRouter while NVIDIA's account
+  verification is pending): run `fixproof doctor` to confirm the model IDs, then one real
+  `fixproof fix` on a validated benchmark task with the Docker executor; record the result.
+- [X] T097 Measure where a real Docker run spends its time and speed up the Docker executor on
   slow machines (for example, fewer image commits), with tests for any behavior change.
+  Done 2026-10-16 (research R5): commits took 79% of a run (51-374 s each); the tarball, file
+  writes, and install chains are no longer committed one by one, and the scripted Docker run
+  went from 888 s and 5 commits to 127 s and 1 commit.
+- [X] T098 [P] Write tests for OpenRouter (constitution 2.2.0, plan D13): `FIXPROOF_PROVIDER=
+  openrouter` switches to `https://openrouter.ai/api/v1/` and the `:free` Nemotron IDs; the key
+  comes from `OPENROUTER_API_KEY` (a missing key names it and openrouter.ai) and is redacted;
+  only `:free` models cost $0; the platform note names OpenRouter; `assert_demo_safe` refuses
+  it; `doctor` names the key and fails a billed role model without a price.
+- [X] T099 Implement OpenRouter as a second personal-mode provider (a provider table in
+  `config.py`, the shared key lookup in `doctor`, the provider-neutral demo guard and model
+  error), and update `.env.example`, `.env.personal.example`, the README, spec FR-024, plan D13,
+  and quickstart.md.
 
 ---
 

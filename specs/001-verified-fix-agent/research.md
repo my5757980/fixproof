@@ -155,7 +155,7 @@ once Token Factory and Sandboxes access is granted.
   - `ContreeExecutor`: the default, and the only one allowed in the demo and video.
   - `DockerExecutor`: **dev-only**, opt-in with `FIXPROOF_EXECUTOR=docker`. It prints a "DEV ONLY"
     banner, implements snapshots with `docker commit`, and runs containers with `--network none`
-    except during dependency install.
+    except during dependency install. Since T097 it commits only when it has to (see below).
   - `FakeExecutor`: an in-memory filesystem with scripted command results. It lives under
     `tests/` only (Constitution II: fakes belong in tests).
 
@@ -168,6 +168,25 @@ once Token Factory and Sandboxes access is granted.
 - **Alternatives considered**: Running repository code with `subprocess` on the host (rejected:
   violates sandboxed execution); waiting for access (rejected: integration would land too late for
   the 2026-10-30 deadline).
+- **Measured on the dev machine (T097, 2026-10-16)**: 4 CPUs, 3.9 GB RAM, Docker Desktop 29.1.3
+  with the containerd image store (`overlayfs`, `io.containerd.snapshotter.v1`), and a 2.5 GB VM.
+  One scripted run of the calc sample (fake model, everything else real) took 888 s, of which
+  700 s were 5 `docker commit` calls: 284 s for the repository upload, 139 s after
+  `pip install pytest`, 150 s after the git baseline, and 75 s and 51 s after two 10 KB file
+  writes. A commit costs minutes whatever the size of the change, so the number of commits is
+  what matters. A second run under more memory pressure hit 374 s for one commit. The executor
+  now commits only when it has to:
+  - the repository tarball stays on the host until the first container extracts it;
+  - written files stay in memory and are copied into each container (`docker cp -`);
+  - mutating runs continue in one stopped container (a chain) and are committed once, when a
+    disposable run or a read needs the result; an older chain state (the input of a failed or
+    timed-out install, the only one the orchestrator reuses) is rebuilt by running its earlier
+    commands again in a new container, so a snapshot never changes under its caller.
+
+  After the change, the same scripted run took 127 s instead of 888 s, with one commit (65 s),
+  and was still verified. A task with three install commands (psf__requests-1142) needed five
+  commits for its setup (upload, three installs, baseline) and one per file write; it now needs
+  one for the setup and none for writes.
 
 ## R6. Repository and task intake (GitHub)
 

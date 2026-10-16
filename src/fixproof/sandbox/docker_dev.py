@@ -3,9 +3,18 @@
 It lets the agent run on real repositories before Token Factory Sandboxes access exists. It is
 never allowed for the public demo or the video (``sandbox.factory.assert_demo_safe``).
 
-- A snapshot is a local Docker image; ``docker commit`` creates new ones.
-- Every container runs with ``--network none``, except mutating runs (dependency install and the
-  git baseline, which only the harness starts, never the model).
+A ``docker commit`` can take minutes on a slow machine whatever the size of the change (measured
+on Docker Desktop with the containerd image store: 51 to 374 s per commit, research R5), so the
+executor commits only when it has to:
+
+- The repository tarball stays on the host until the first container extracts it.
+- Written files stay in memory and are copied into every container started from the snapshot.
+- Mutating runs (dependency install, the git baseline, ``git apply``) continue one after another
+  in the same stopped container (a chain); it is committed once, when something else needs its
+  newest state. An older state of a chain is rebuilt by running its commands again in a new
+  container, so a snapshot never changes under its caller.
+- Every container runs with ``--network none``, except chains, which only the harness starts,
+  never the model.
 - Timeouts kill the container. No host directory is ever mounted.
 """
 
@@ -14,12 +23,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import itertools
 import shlex
+import shutil
 import sys
 import tarfile
+import tempfile
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from pathlib import Path
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, TextIO
 
 from fixproof.events import EventType
@@ -30,6 +43,12 @@ BANNER = "DEV ONLY — not Token Factory Sandboxes"
 OUTPUT_LIMIT = 65536
 TIMEOUT_EXIT_CODE = 124
 LIST_LIMIT = 1000
+TARBALL_PATH = "/tmp/repo.tgz"
+EXTRACT_COMMAND = (
+    f"mkdir -p {REPO_ROOT} && tar -xzf {TARBALL_PATH} -C {REPO_ROOT} --strip-components=1 "
+    f"&& rm -f {TARBALL_PATH}"
+)
+STEP_SCRIPT = "/tmp/fixproof-step.sh"  # a chain container runs this script on every start
 
 Runner = Callable[[Sequence[str], bytes | None, float | None], Awaitable[tuple[int, bytes, bytes]]]
 EventCallback = Callable[[EventType, dict[str, Any]], None]
@@ -54,6 +73,38 @@ async def run_docker(
     return process.returncode or 0, stdout, stderr
 
 
+@dataclass(frozen=True)
+class _Pending:
+    """What a snapshot adds to a committed image without a commit.
+
+    Attributes:
+        image: The committed image.
+        files: Written files, relative to ``REPO_ROOT`` (the latest write wins).
+        tarball: The repository tarball, extracted into ``REPO_ROOT`` by the first container.
+    """
+
+    image: str
+    files: Mapping[str, bytes]
+    tarball: Path | None = None
+
+
+@dataclass
+class _Chain:
+    """A stopped container holding mutating runs that are not committed yet.
+
+    Attributes:
+        container: The container. Each run copies its script in as ``STEP_SCRIPT`` and starts
+            the container again, so the filesystem carries over from one run to the next.
+        base: What the container was created from.
+        steps: Every script started in it so far, with its timeout, in order (also the ones
+            that failed or timed out, because they changed the filesystem too).
+    """
+
+    container: str
+    base: _Pending
+    steps: list[tuple[str, int]] = field(default_factory=list)
+
+
 class DockerExecutor:
     """Executor on the local Docker daemon, for development only.
 
@@ -76,72 +127,68 @@ class DockerExecutor:
         self._on_event = on_event
         self._containers: set[str] = set()
         self._images: list[str] = []  # committed snapshots and tags, removed on close
+        self._pending: dict[str, _Pending] = {}  # snapshot ID -> what is not committed yet
+        self._chains: dict[str, tuple[_Chain, int]] = {}  # snapshot ID -> (chain, its steps)
+        self._chain_lock = asyncio.Lock()  # one chain change or commit at a time
+        self._ids = itertools.count(1)
+        self._workdir: Path | None = None  # copies of repository tarballs, removed on close
         print(BANNER, file=banner_stream or sys.stderr)
 
     async def prepare_repo(self, tarball_path: Path, base_image: str) -> Snapshot:
-        """Copy the tarball into a container of ``base_image``, extract it, and commit."""
-        command = (
-            f"mkdir -p {REPO_ROOT} && tar -xzf /tmp/repo.tgz -C {REPO_ROOT} "
-            "--strip-components=1 && rm -f /tmp/repo.tgz"
-        )
-        started = time.monotonic()
-        container = await self._create(base_image, command, network=False, workdir="/")
-        try:
-            await self._docker("cp", str(tarball_path), f"{container}:/tmp/repo.tgz")
-            code, _, stderr = await self._runner(["docker", "start", "-a", container], None, 600)
-            if code != 0:
-                raise ExecutorError(
-                    f"Could not extract the repository (exit {code}): {_text(stderr)[-500:]}"
-                )
-            image = await self._commit(container)
-        finally:
-            await self._remove(container)
-        result = CommandResult(stdout="", elapsed_s=time.monotonic() - started)
-        self._publish("upload", base_image, image, command, result, disposable=False)
-        return Snapshot(image_id=image, label="source")
+        """Keep a copy of the tarball as the source snapshot, without a container or commit.
+
+        The first container started from the snapshot extracts it before its command runs.
+        """
+        if self._workdir is None:
+            self._workdir = Path(tempfile.mkdtemp(prefix="fixproof-docker-"))
+        number = next(self._ids)
+        tarball = self._workdir / f"repo-{number}.tgz"
+        shutil.copyfile(tarball_path, tarball)
+        snapshot_id = f"{base_image}+repo{number}"
+        self._pending[snapshot_id] = _Pending(base_image, {}, tarball)
+        result = CommandResult(stdout="")
+        self._publish("upload", base_image, snapshot_id, EXTRACT_COMMAND, result, disposable=False)
+        return Snapshot(image_id=snapshot_id, label="source")
 
     async def run(
         self, snapshot: Snapshot, command: str, *, timeout_s: int, mutate: bool
     ) -> tuple[CommandResult, Snapshot]:
-        """Run ``command`` in a new container; only mutating runs get network access."""
+        """Run ``command`` in a container; only mutating runs get network access.
+
+        A mutating run continues the snapshot's chain container when the snapshot is the
+        chain's newest state, and starts a new chain otherwise; nothing is committed here.
+        """
+        if mutate:
+            return await self._run_in_chain(snapshot, command, timeout_s)
+        await self._settle(snapshot)
         started = time.monotonic()
-        container = await self._create(snapshot.image_id, command, network=mutate)
+        container = await self._container(snapshot, command)
         try:
-            try:
-                code, stdout, stderr = await self._runner(
-                    ["docker", "start", "-a", container], None, timeout_s
-                )
-                result = CommandResult(
-                    stdout=_text(stdout)[-OUTPUT_LIMIT:],
-                    stderr=_text(stderr)[-OUTPUT_LIMIT:],
-                    exit_code=code,
-                    elapsed_s=time.monotonic() - started,
-                )
-            except TimeoutError:
-                await self._runner(["docker", "kill", container], None, 30)
-                result = CommandResult(
-                    stdout="",
-                    stderr=f"The command timed out after {timeout_s} s.",
-                    exit_code=TIMEOUT_EXIT_CODE,
-                    elapsed_s=time.monotonic() - started,
-                    timed_out=True,
-                )
-            after = snapshot
-            if mutate and not result.timed_out:
-                image = await self._commit(container)
-                after = Snapshot(image_id=image, parent_id=snapshot.image_id, label="run")
+            result = await self._start(container, timeout_s, started)
         finally:
             await self._remove(container)
-        image_out = after.image_id if after is not snapshot else None
-        self._publish("run", snapshot.image_id, image_out, command, result, disposable=not mutate)
-        return result, after
+        self._publish("run", snapshot.image_id, None, command, result, disposable=True)
+        return result, snapshot
 
     async def read_file(self, snapshot: Snapshot, path: str) -> bytes:
-        """Read a file of ``REPO_ROOT`` from the image with ``docker cp`` (no command runs)."""
-        container = await self._create(snapshot.image_id, "true", network=False)
+        """Read a file of ``REPO_ROOT``; no command runs.
+
+        A file written but not committed yet comes from memory, a file of a repository not
+        extracted yet from its tarball, and any other file from the image with ``docker cp``.
+        """
+        await self._settle(snapshot)
+        layers = self._layers(snapshot)
+        relative = path.strip("/")
+        if relative in layers.files:
+            return layers.files[relative]
+        if any(name.startswith(f"{relative}/") for name in layers.files):
+            raise IsADirectoryError(path)
+        if layers.tarball is not None:
+            return _read_tarball(layers.tarball, relative)
+        container = await self._create(layers.image, "true", network=False)
         try:
             code, stdout, _ = await self._runner(
-                ["docker", "cp", f"{container}:{REPO_ROOT}/{path.strip('/')}", "-"], None, 60
+                ["docker", "cp", f"{container}:{REPO_ROOT}/{relative}", "-"], None, 60
             )
         finally:
             await self._remove(container)
@@ -178,34 +225,43 @@ class DockerExecutor:
         return sorted(entries, key=lambda e: e.path)[:LIST_LIMIT]
 
     async def write_files(self, snapshot: Snapshot, files: Mapping[str, bytes]) -> Snapshot:
-        """Copy files into ``REPO_ROOT`` (as one tar stream) and commit a new image."""
-        started = time.monotonic()
-        archive = io.BytesIO()
-        with tarfile.open(fileobj=archive, mode="w") as tar:
-            for path, content in files.items():
-                info = tarfile.TarInfo(name=path.strip("/"))
-                info.size = len(content)
-                info.mode = 0o644
-                tar.addfile(info, io.BytesIO(content))
-        container = await self._create(snapshot.image_id, "true", network=False)
-        try:
-            code, _, stderr = await self._runner(
-                ["docker", "cp", "-", f"{container}:{REPO_ROOT}"], archive.getvalue(), 120
-            )
-            if code != 0:
-                raise ExecutorError(f"docker cp failed: {_text(stderr)[-500:]}")
-            image = await self._commit(container)
-        finally:
-            await self._remove(container)
-        result = CommandResult(stdout="", elapsed_s=time.monotonic() - started)
-        command = "write " + ", ".join(sorted(files))
-        self._publish("upload", snapshot.image_id, image, command, result, disposable=False)
-        return Snapshot(image_id=image, parent_id=snapshot.image_id, label="write")
+        """Write files into ``REPO_ROOT`` as a new snapshot, without a Docker commit.
+
+        The files stay in memory: every container started from the new snapshot gets them (as
+        one tar stream) before its command runs, and a mutating run commits them with the rest.
+        A repository that is still a tarball is extracted and committed first.
+        """
+        await self._settle(snapshot)
+        if self._layers(snapshot).tarball is not None:
+            result, extracted = await self._run_in_chain(snapshot, "true", 600)
+            if not result.ok:
+                raise ExecutorError(
+                    f"Could not extract the repository (exit {result.exit_code}): "
+                    f"{result.stderr[-500:]}"
+                )
+            await self._settle(extracted)
+            self._pending[snapshot.image_id] = self._layers(extracted)
+        layers = self._layers(snapshot)
+        written = {path.strip("/"): content for path, content in files.items()}
+        snapshot_id = f"{layers.image}+files{next(self._ids)}"
+        self._pending[snapshot_id] = _Pending(layers.image, {**layers.files, **written})
+        command = "write " + ", ".join(sorted(written))
+        result = CommandResult(stdout="")
+        self._publish("upload", snapshot.image_id, snapshot_id, command, result, disposable=False)
+        return Snapshot(image_id=snapshot_id, parent_id=snapshot.image_id, label="write")
 
     async def tag(self, snapshot: Snapshot, label: str) -> Snapshot:
-        """Tag the image as ``<label>:latest`` (Docker requires lowercase names)."""
+        """Tag the image as ``<label>:latest`` (Docker requires lowercase names).
+
+        A snapshot with changes not committed yet has no image of its own: it only gets the
+        label and stays usable through its ``image_id`` until the executor is closed.
+        """
+        layers = self._layers(snapshot)
+        uncommitted = snapshot.image_id in self._chains or layers.files or layers.tarball
+        if uncommitted:
+            return snapshot.model_copy(update={"label": label.rsplit("/", 1)[-1]})
         name = f"{label.lower()}:latest"
-        await self._docker("tag", snapshot.image_id, name)
+        await self._docker("tag", layers.image, name)
         self._images.append(name)
         return snapshot.model_copy(update={"tag": label, "label": label.rsplit("/", 1)[-1]})
 
@@ -227,13 +283,159 @@ class DockerExecutor:
             with contextlib.suppress(Exception):
                 await self._runner(["docker", "rmi", "-f", image], None, 120)
         self._images.clear()
+        self._pending.clear()
+        self._chains.clear()
+        if self._workdir is not None:
+            shutil.rmtree(self._workdir, ignore_errors=True)
+            self._workdir = None
 
     async def list_images(self, limit: int = 1) -> list[str]:
         """Return up to ``limit`` local image names (``doctor`` reachability check)."""
         stdout = await self._docker("image", "ls", "--format", "{{.Repository}}:{{.Tag}}")
         return stdout.split()[:limit]
 
+    # -- chains of mutating runs -------------------------------------------------------------
+
+    async def _run_in_chain(
+        self, snapshot: Snapshot, command: str, timeout_s: int
+    ) -> tuple[CommandResult, Snapshot]:
+        started = time.monotonic()
+        async with self._chain_lock:
+            chain = await self._chain_for(snapshot)
+            script = command
+            if not chain.steps and chain.base.tarball is not None:
+                script = f"{EXTRACT_COMMAND} && sh -c {shlex.quote(command)}"
+            result = await self._step(chain, script, timeout_s, started)
+            after = snapshot
+            if not result.timed_out:
+                after_id = f"{chain.container[:12]}+step{len(chain.steps)}"
+                self._chains[after_id] = (chain, len(chain.steps))
+                after = Snapshot(image_id=after_id, parent_id=snapshot.image_id, label="run")
+        image_out = after.image_id if after is not snapshot else None
+        self._publish("run", snapshot.image_id, image_out, command, result, disposable=False)
+        return result, after
+
+    async def _chain_for(self, snapshot: Snapshot) -> _Chain:
+        """Return the chain to continue for ``snapshot``, rebuilding an older state."""
+        entry = self._chains.get(snapshot.image_id)
+        if entry is None:
+            return await self._new_chain(self._layers(snapshot))
+        chain, steps = entry
+        if steps == len(chain.steps):
+            return chain
+        return await self._rebuild(snapshot.image_id, chain, steps)
+
+    async def _new_chain(self, base: _Pending) -> _Chain:
+        container = await self._create(base.image, f"sh {STEP_SCRIPT}", network=True)
+        try:
+            if base.tarball is not None:
+                await self._docker("cp", str(base.tarball), f"{container}:{TARBALL_PATH}")
+            if base.files:
+                await self._copy_in(container, REPO_ROOT, base.files)
+        except BaseException:
+            await self._remove(container)
+            raise
+        return _Chain(container, base)
+
+    async def _step(
+        self, chain: _Chain, script: str, timeout_s: int, started: float
+    ) -> CommandResult:
+        name = PurePosixPath(STEP_SCRIPT)
+        await self._copy_in(chain.container, str(name.parent), {name.name: script.encode()})
+        chain.steps.append((script, timeout_s))
+        return await self._start(chain.container, timeout_s, started)
+
+    async def _rebuild(self, snapshot_id: str, chain: _Chain, steps: int) -> _Chain:
+        """Rebuild an older state of ``chain`` by running its first ``steps`` scripts again."""
+        fresh = await self._new_chain(chain.base)
+        try:
+            for script, timeout_s in chain.steps[:steps]:
+                result = await self._step(fresh, script, timeout_s, time.monotonic())
+                self._publish(
+                    "run", snapshot_id, None, f"rebuild: {script}", result, disposable=False
+                )
+                if not result.ok:
+                    raise ExecutorError(
+                        f"Could not rebuild an earlier snapshot: a command that worked before "
+                        f"failed (exit {result.exit_code}): {result.stderr[-300:]}"
+                    )
+        except BaseException:
+            await self._remove(fresh.container)
+            raise
+        self._chains[snapshot_id] = (fresh, steps)
+        return fresh
+
+    async def _settle(self, snapshot: Snapshot) -> None:
+        """Commit ``snapshot`` if it is a chain state, so other containers can start from it."""
+        if snapshot.image_id not in self._chains:
+            return
+        async with self._chain_lock:
+            entry = self._chains.get(snapshot.image_id)
+            if entry is None:  # settled by a concurrent call while this one waited
+                return
+            chain, steps = entry
+            if steps != len(chain.steps):
+                chain = await self._rebuild(snapshot.image_id, chain, steps)
+            image = await self._commit(chain.container)
+            await self._remove(chain.container)
+            del self._chains[snapshot.image_id]
+            self._pending[snapshot.image_id] = _Pending(image, {})
+
     # -- helpers -----------------------------------------------------------------------------
+
+    def _layers(self, snapshot: Snapshot) -> _Pending:
+        """Return the committed image of ``snapshot`` and what is not committed on top of it."""
+        return self._pending.get(snapshot.image_id) or _Pending(snapshot.image_id, {})
+
+    async def _container(self, snapshot: Snapshot, command: str) -> str:
+        """Create a disposable container (no network) of a snapshot that is not a chain state.
+
+        A repository tarball is copied in and extracted by the container itself before
+        ``command`` runs; written files are streamed into ``REPO_ROOT`` before it starts.
+        """
+        layers = self._layers(snapshot)
+        if layers.tarball is not None:
+            command = f"{EXTRACT_COMMAND} && sh -c {shlex.quote(command)}"
+        container = await self._create(layers.image, command, network=False)
+        try:
+            if layers.tarball is not None:
+                await self._docker("cp", str(layers.tarball), f"{container}:{TARBALL_PATH}")
+            if layers.files:
+                await self._copy_in(container, REPO_ROOT, layers.files)
+        except BaseException:
+            await self._remove(container)
+            raise
+        return container
+
+    async def _copy_in(self, container: str, directory: str, files: Mapping[str, bytes]) -> None:
+        """Stream ``files`` (paths relative to ``directory``) into a container as one tar."""
+        code, _, stderr = await self._runner(
+            ["docker", "cp", "-", f"{container}:{directory}"], _tar(files), 120
+        )
+        if code != 0:
+            raise ExecutorError(f"docker cp failed: {_text(stderr)[-500:]}")
+
+    async def _start(self, container: str, timeout_s: int, started: float) -> CommandResult:
+        """Start a created or stopped container and wait; a timeout kills it."""
+        try:
+            code, stdout, stderr = await self._runner(
+                ["docker", "start", "-a", container], None, timeout_s
+            )
+        except TimeoutError:
+            await self._runner(["docker", "kill", container], None, 30)
+            return CommandResult(
+                stdout="",
+                stderr=f"The command timed out after {timeout_s} s.",
+                exit_code=TIMEOUT_EXIT_CODE,
+                elapsed_s=time.monotonic() - started,
+                timed_out=True,
+            )
+        return CommandResult(
+            stdout=_text(stdout)[-OUTPUT_LIMIT:],
+            stderr=_text(stderr)[-OUTPUT_LIMIT:],
+            exit_code=code,
+            elapsed_s=time.monotonic() - started,
+        )
 
     async def _create(
         self, image: str, command: str, *, network: bool, workdir: str = REPO_ROOT
@@ -285,6 +487,38 @@ class DockerExecutor:
                     "disposable": disposable,
                 },
             )
+
+
+def _tar(files: Mapping[str, bytes]) -> bytes:
+    """Pack ``files`` (paths relative to the target folder) into one uncompressed tar archive."""
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        for path, content in files.items():
+            info = tarfile.TarInfo(name=path)
+            info.size = len(content)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(content))
+    return archive.getvalue()
+
+
+def _read_tarball(tarball: Path, path: str) -> bytes:
+    """Read ``path`` (relative to the repository root) from a GitHub tarball.
+
+    The tarball has one top-level folder, which is stripped like ``--strip-components=1``.
+    """
+    with tarfile.open(tarball, "r:gz") as archive:
+        for member in archive:
+            name = member.name.split("/", 1)[1] if "/" in member.name else ""
+            if name.rstrip("/") == path:
+                if member.isdir():
+                    raise IsADirectoryError(path)
+                handle = archive.extractfile(member)
+                if handle is None:
+                    raise FileNotFoundError(path)
+                return handle.read()
+            if name.startswith(f"{path}/"):
+                raise IsADirectoryError(path)
+    raise FileNotFoundError(path)
 
 
 def _text(data: bytes) -> str:
