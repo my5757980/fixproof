@@ -893,9 +893,16 @@ and always labeled.
 - [X] T095 Update `.env.example`, the README (a "Personal mode" section: get a key at
   build.nvidia.com, set `FIXPROOF_PROVIDER=nvidia`, `NVIDIA_API_KEY`, and `FIXPROOF_EXECUTOR=docker`;
   run `doctor`), and quickstart.md.
-- [ ] T096 With the user's personal-mode key (NVIDIA's API, or OpenRouter while NVIDIA's account
+- [X] T096 With the user's personal-mode key (NVIDIA's API, or OpenRouter while NVIDIA's account
   verification is pending): run `fixproof doctor` to confirm the model IDs, then one real
   `fixproof fix` on a validated benchmark task with the Docker executor; record the result.
+  Done 2026-10-16 with OpenRouter: `doctor` listed all three `:free` IDs. psf__requests-1142
+  (python:3.9, `--max-steps 30 --max-minutes 60`), run `run-20261016-055755-e8c62d`: **Not
+  verified** (step budget), 2008 s, $0, 30 model calls. The agent reproduced the bug with a
+  failing test and named the right root cause (`prepare_content_length` always sets
+  `Content-Length: 0`), but its fix attempt was incomplete and it spent steps on extra test and
+  debug files. Setup took 368 s with no commit. The free Ultra variant timed out twice (about
+  6.5 min lost), so the owner's `.env` now plans with Super.
 - [X] T097 Measure where a real Docker run spends its time and speed up the Docker executor on
   slow machines (for example, fewer image commits), with tests for any behavior change.
   Done 2026-10-16 (research R5): commits took 79% of a run (51-374 s each); the tarball, file
