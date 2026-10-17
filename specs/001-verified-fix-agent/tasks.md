@@ -930,8 +930,16 @@ explicitly and always labeled.
   `doctor` names the key.
 - [X] T101 Implement Requesty as a third entry in `PERSONAL_PROVIDERS`, and update the `.env`
   examples, the README, spec FR-024, plan D14, and quickstart.md.
-- [ ] T102 With the owner's Requesty key: `fixproof doctor`, confirm the free daily limit in the
+- [X] T102 With the owner's Requesty key: `fixproof doctor`, confirm the free daily limit in the
   account, then a real run on psf__requests-1142 with the default budget; record the result.
+  Done 2026-10-17: `doctor` passed; the first run (`run-20261017-093509-5199b6`) lost its one
+  commit to the 600 s docker timeout (commits now get 1800 s); a retry was stopped by Claude
+  Code for low memory in the fix phase; `run-20261017-101648-ff6e7c` was **Verified** in 955 s
+  at $0 with Super as planner and worker: `prepare_content_length` no longer sets
+  `Content-Length: 0` when there is no body, one reproduction test (fails before, passes 3 of 3
+  after), full suite 6 passed and 21 failed (the same 21 network tests as at baseline), no
+  regressions, no existing test changed, no scratch files; 21 model calls. The free daily limit
+  was not shown in the account; 39 Requesty calls that day got no rate-limit error.
 
 ---
 
