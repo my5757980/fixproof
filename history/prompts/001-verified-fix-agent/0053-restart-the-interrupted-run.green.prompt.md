@@ -36,6 +36,16 @@ container remained (only the user's own postgres and redis containers). With mos
 free requests left, Claude started the same run again (psf__requests-1142, python:3.9, 40 steps,
 60 minutes) and asked the user to keep Claude Code open until it finishes.
 
+That run (run-20261017-075202-e1ae42) ended Not verified (not reproducible) after 670 s and 16
+model calls. The trace showed why: the worker searched one file (`requests/models.py`) for
+`def prepare` ten times and always got 0 matches, though the code is there. Bug in FixProof:
+for a single file operand grep prints `line:text` without the file name, so the `path:line:text`
+parser found nothing. Fix: `build_search_command` passes `-H`. The fake executor now mimics real
+grep (no file name for a single file without `-H`), and a new handler test fails on the old
+command and passes on the new one; 56 tool and search tests passed. The full offline suite and a
+real-container grep check were started but stopped by Claude Code for low memory and were not
+rerun without the user.
+
 ## Outcome
 
 - ✅ Impact: the second real run is going again.

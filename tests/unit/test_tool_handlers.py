@@ -135,6 +135,13 @@ async def test_search_code_matches_and_errors() -> None:
     assert b.executor.commands[-1].mutate is False
 
 
+async def test_search_code_in_a_single_file_still_finds_matches() -> None:
+    """grep prints no file name for a single file unless asked; the parser needs it."""
+    b = await make_box()
+    out = await b.call("search_code", pattern=r"def add\(", path="pkg/core.py")
+    assert out["matches"] == [{"path": "pkg/core.py", "line": 1, "text": "def add(a, b):"}]
+
+
 async def test_search_code_reports_truncation() -> None:
     b = await make_box()
     out = await b.call("search_code", pattern="line", glob="*.txt", max_results=5)

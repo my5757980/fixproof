@@ -324,6 +324,8 @@ def _grep(command: str, fs: Files) -> CommandResult:
     prefix = "" if root == "." else root.rstrip("/") + "/"
     if prefix and not any(p == root or p.startswith(prefix) for p in fs):
         return CommandResult(stdout="", stderr=f"grep: {root}: No such file or directory")
+    # Like GNU grep, a single file operand prints "line:text" unless -H is given.
+    names = "-H" in tokens or root not in fs
     lines = []
     for path in sorted(fs):
         in_root = not prefix or path == root or path.startswith(prefix)
@@ -333,7 +335,7 @@ def _grep(command: str, fs: Files) -> CommandResult:
         shown = f"./{path}" if root == "." else path
         for number, text in enumerate(content.decode("utf-8", "replace").splitlines(), start=1):
             if regex.search(text):
-                lines.append(f"{shown}:{number}:{text}")
+                lines.append(f"{shown}:{number}:{text}" if names else f"{number}:{text}")
     return CommandResult(stdout="\n".join(lines[: int(limit or len(lines) or 1)]))
 
 

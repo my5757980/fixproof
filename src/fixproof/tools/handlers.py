@@ -277,9 +277,13 @@ def forbidden_reason(command: str) -> str | None:
 
 
 def build_search_command(pattern: str, path: str, glob: str, max_results: int) -> str:
-    """Build the ``grep`` command used by ``search_code`` (every argument is shell-quoted)."""
+    """Build the ``grep`` command used by ``search_code`` (every argument is shell-quoted).
+
+    ``-H`` keeps the ``path:line:text`` format when ``path`` is a single file, for which grep
+    would otherwise print only ``line:text``.
+    """
     return (
-        "grep -rnE --binary-files=without-match --exclude-dir=.git --exclude-dir=__pycache__ "
+        "grep -rnE -H --binary-files=without-match --exclude-dir=.git --exclude-dir=__pycache__ "
         f"--include={shlex.quote(glob)} -e {shlex.quote(pattern)} -- {shlex.quote(path)} "
         f"| head -n {max_results + 1}"
     )
