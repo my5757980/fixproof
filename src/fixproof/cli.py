@@ -637,6 +637,13 @@ def bench_run(
         bool,
         typer.Option("--compare-single", help="Also run every task single-path (SC-007)."),
     ] = False,
+    max_steps: Annotated[
+        int | None, typer.Option("--max-steps", help="Model-call budget per run (default 40).")
+    ] = None,
+    max_minutes: Annotated[
+        float | None,
+        typer.Option("--max-minutes", help="Time budget per run in minutes (default 15)."),
+    ] = None,
 ) -> None:
     """Run every benchmark task, re-check each verified fix, and write the results."""
     try:
@@ -651,11 +658,13 @@ def bench_run(
             _fail(f"unknown task IDs: {', '.join(unknown)}", EXIT_INVALID_INPUT)
         task_list = [task for task in task_list if task.id in wanted]
     settings = factories.settings()
+    budget = _budget(settings, max_steps, max_minutes, None)
     console = Console(soft_wrap=True, highlight=False)
     _print_platform_notice(console, settings)
     out_dir = out or default_results_dir()
     bench = BenchRunner(
         settings=settings,
+        budget=budget,
         services=BenchServices(
             model=factories.model,
             executor=factories.executor,

@@ -324,6 +324,19 @@ def test_bench_run_and_report_from_the_cli(monkeypatch: pytest.MonkeyPatch, tmp_
     assert json.loads(as_json.stdout)["summaries"][0]["verified"] == 1
 
 
+def test_bench_run_takes_a_larger_budget_for_slow_machines(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    use_bench_fakes(monkeypatch, Fakes((happy_planner(), happy_worker())))
+    tasks_file = write_tasks(tmp_path)
+    out = tmp_path / "results"
+    args = ["--tasks", str(tasks_file), "--out", str(out), "--max-minutes", "60"]
+    result = runner.invoke(app, ["bench", "run", *args, "--max-steps", "30"])
+    assert result.exit_code == 0, result.output
+    budget = load_results(out).budget
+    assert (budget.max_seconds, budget.max_steps) == (3600, 30)
+
+
 def test_bench_cli_rejects_bad_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     use_bench_fakes(monkeypatch, Fakes())
     tasks_file = write_tasks(tmp_path)

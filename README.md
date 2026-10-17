@@ -214,6 +214,7 @@ fixproof replay  TRACE_PATH [--speed X]          # replay a recorded run, labele
 fixproof apply   RUN_DIR [--to PATH]             # apply the patch to your checkout, after [y/N]
 fixproof pr      RUN_DIR [--title TEXT]          # open a draft PR from your account, after [y/N]
 fixproof bench   run [--tasks FILE] [--only IDS] [--parallel N] [--compare-single] [--out DIR]
+                 [--max-steps N] [--max-minutes N]   # budget per run; default 40 steps, 15 min
 fixproof bench   report RESULTS_DIR [--json]
 fixproof doctor  [--json]                         # check configuration and access
 fixproof serve   [--host HOST] [--port PORT]      # start the web demo
