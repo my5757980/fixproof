@@ -52,6 +52,12 @@ OPENROUTER_WORKER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning:free"
 _FREE_SUFFIX = ":free"
 
+# Personal mode through Requesty (constitution 2.3.0): the same NVIDIA Nemotron IDs as NVIDIA's
+# API, listed at $0 with tool calling by https://router.requesty.ai/v1/models on 2026-10-17. Any
+# other Requesty model is billed and needs FIXPROOF_PRICES.
+REQUESTY_API_URL = "https://router.requesty.ai/v1/"
+REQUESTY_PRICES: dict[str, tuple[float, float]] = dict(NVIDIA_PRICES)
+
 
 @dataclass(frozen=True)
 class PersonalProvider:
@@ -88,6 +94,16 @@ PERSONAL_PROVIDERS = {
         worker_model=OPENROUTER_WORKER_MODEL,
         fallback_model=OPENROUTER_FALLBACK_MODEL,
     ),
+    "requesty": PersonalProvider(
+        name="requesty",
+        label="Requesty",
+        base_url=REQUESTY_API_URL,
+        key_variable="REQUESTY_API_KEY",
+        key_page="https://app.requesty.ai/api-keys",
+        planner_model=NVIDIA_PLANNER_MODEL,
+        worker_model=NVIDIA_WORKER_MODEL,
+        fallback_model=NVIDIA_FALLBACK_MODEL,
+    ),
 }
 
 
@@ -106,15 +122,16 @@ class Settings(BaseSettings):
         validate_by_alias=True,
     )
 
-    # Model provider: nebius (the hackathon configuration), or nvidia or openrouter (personal
-    # mode, FR-024)
-    provider: Literal["nebius", "nvidia", "openrouter"] = Field(
+    # Model provider: nebius (the hackathon configuration), or nvidia, openrouter, or requesty
+    # (personal mode, FR-024)
+    provider: Literal["nebius", "nvidia", "openrouter", "requesty"] = Field(
         default="nebius", validation_alias="FIXPROOF_PROVIDER"
     )
     nvidia_api_key: SecretStr | None = Field(default=None, validation_alias="NVIDIA_API_KEY")
     openrouter_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
+    requesty_api_key: SecretStr | None = Field(default=None, validation_alias="REQUESTY_API_KEY")
 
     # Nebius Token Factory (inference). In personal mode the base URL defaults to the provider's.
     nebius_api_key: SecretStr | None = Field(default=None, validation_alias="NEBIUS_API_KEY")
@@ -199,7 +216,7 @@ class Settings(BaseSettings):
         return PERSONAL_PROVIDERS.get(self.provider)
 
     def is_personal_mode(self) -> bool:
-        """Return whether personal mode (NVIDIA's API or OpenRouter, FR-024) is selected."""
+        """Return whether personal mode (NVIDIA's API, OpenRouter, or Requesty) is selected."""
         return self.personal_provider() is not None
 
     def api_key_variable(self) -> str:
@@ -218,6 +235,7 @@ class Settings(BaseSettings):
             "nebius": self.nebius_api_key,
             "nvidia": self.nvidia_api_key,
             "openrouter": self.openrouter_api_key,
+            "requesty": self.requesty_api_key,
         }
         return _secret(keys[self.provider])
 
@@ -275,8 +293,8 @@ class Settings(BaseSettings):
     def is_dev_endpoint(self) -> bool:
         """Return whether the endpoint is not the selected provider's own (dev-only use).
 
-        The provider's own endpoint is Nebius Token Factory, or in personal mode NVIDIA's API or
-        OpenRouter.
+        The provider's own endpoint is Nebius Token Factory, or in personal mode NVIDIA's API,
+        OpenRouter, or Requesty.
         """
         host = (urlparse(self.nebius_base_url).hostname or "").lower()
         personal = self.personal_provider()
@@ -311,6 +329,7 @@ class Settings(BaseSettings):
             self.nebius_api_key,
             self.nvidia_api_key,
             self.openrouter_api_key,
+            self.requesty_api_key,
             self.contree_token,
             self.github_token,
             self.tavily_api_key,
@@ -355,7 +374,8 @@ class Settings(BaseSettings):
 
         The defaults are the provider's: Token Factory prices; $0 for NVIDIA's API (also for any
         other model configured for a role); on OpenRouter, $0 for the free ``:free`` variants
-        only, so a billed model needs a price in ``FIXPROOF_PRICES``.
+        only; on Requesty, $0 for the three NVIDIA models it lists at $0 only. A billed model
+        needs a price in ``FIXPROOF_PRICES``.
         """
         roles = (self.planner_model, self.worker_model, self.fallback_model)
         if self.provider == "nvidia":
@@ -364,6 +384,8 @@ class Settings(BaseSettings):
         elif self.provider == "openrouter":
             free = (model for model in roles if model.lower().endswith(_FREE_SUFFIX))
             table = {model.lower(): (0.0, 0.0) for model in free}
+        elif self.provider == "requesty":
+            table = dict(REQUESTY_PRICES)
         else:
             table = dict(DEFAULT_PRICES)
         table.update({model.lower(): price for model, price in self.prices.items()})

@@ -39,4 +39,6 @@ def test_demo_refuses_personal_mode() -> None:
         assert_demo_safe(make_settings(provider="nvidia"))
     with pytest.raises(ConfigError, match=r"FIXPROOF_PROVIDER=openrouter .*OpenRouter"):
         assert_demo_safe(make_settings(provider="openrouter"))
+    with pytest.raises(ConfigError, match=r"FIXPROOF_PROVIDER=requesty .*Requesty"):
+        assert_demo_safe(make_settings(provider="requesty"))
     assert_demo_safe(make_settings(provider="nvidia", allow_dev=True))

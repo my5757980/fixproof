@@ -174,12 +174,13 @@ uv run pytest
 ## Personal mode (without the hackathon platform)
 
 If you cannot use Nebius Token Factory (for example, its billing is not available in your
-country), FixProof also runs with the same Nemotron models from NVIDIA's own API or from
-OpenRouter, and with local Docker containers instead of Token Factory Sandboxes. This is
+country), FixProof also runs with the same Nemotron models from NVIDIA's own API, OpenRouter, or
+Requesty, and with local Docker containers instead of Token Factory Sandboxes. This is
 **not** the hackathon platform: every report, benchmark summary, and `doctor` check says so.
 
-1. Create an API key, at [build.nvidia.com](https://build.nvidia.com/settings/api-keys) for
-   NVIDIA's API or at [openrouter.ai](https://openrouter.ai/settings/keys) for OpenRouter.
+1. Create an API key: at [build.nvidia.com](https://build.nvidia.com/settings/api-keys) for
+   NVIDIA's API, at [openrouter.ai](https://openrouter.ai/settings/keys) for OpenRouter, or at
+   [requesty.ai](https://app.requesty.ai/api-keys) for Requesty.
 2. Start Docker Desktop.
 3. Configure and check:
 
@@ -195,12 +196,13 @@ OpenRouter, and with local Docker containers instead of Token Factory Sandboxes.
 | `FIXPROOF_PROVIDER` | Key | Endpoint | Planner, worker, fallback | Cost |
 |---|---|---|---|---|
 | `nvidia` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-ultra-550b-a55b`, `nvidia/nemotron-3-super-120b-a12b`, `nvidia/nemotron-3.5-lightning-30b-a3b` | $0 (free to use) |
-| `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` | the same models as free variants: `...-ultra-550b-a55b:free`, `...-super-120b-a12b:free`, `nvidia/nemotron-3.5-lightning:free` | $0, with a daily request limit |
+| `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` | the same models as free variants: `...-ultra-550b-a55b:free`, `...-super-120b-a12b:free`, `nvidia/nemotron-3.5-lightning:free` | $0, with a daily request limit (about 50 without bought credits) |
+| `requesty` | `REQUESTY_API_KEY` | `https://router.requesty.ai/v1` | the same IDs as `nvidia` | $0, with a larger daily limit on free models |
 
-Values you set yourself always win. A billed OpenRouter model (without `:free`) needs a price in
-`FIXPROOF_PRICES`, and `doctor` says so. The step and time budgets always apply. Personal mode
-is never used automatically, one provider never falls back to the other, and the public demo
-refuses it.
+Values you set yourself always win. A billed OpenRouter or Requesty model (one not listed at $0)
+needs a price in `FIXPROOF_PRICES`, and `doctor` says so. The step and time budgets always
+apply. Personal mode is never used automatically, one provider never falls back to another, and
+the public demo refuses it.
 
 ## Usage
 
@@ -271,9 +273,10 @@ All settings come from environment variables or `.env` (see `.env.example`).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `FIXPROOF_PROVIDER` | `nebius` | `nebius` (Token Factory, the hackathon configuration), or `nvidia` or `openrouter` (personal mode) |
+| `FIXPROOF_PROVIDER` | `nebius` | `nebius` (Token Factory, the hackathon configuration), or `nvidia`, `openrouter`, or `requesty` (personal mode) |
 | `NVIDIA_API_KEY` | (personal mode) | NVIDIA API key from build.nvidia.com |
 | `OPENROUTER_API_KEY` | (personal mode) | OpenRouter API key from openrouter.ai |
+| `REQUESTY_API_KEY` | (personal mode) | Requesty API key from requesty.ai |
 | `NEBIUS_API_KEY` | (required) | Token Factory API key |
 | `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1/` (personal mode: the provider's endpoint) | Inference endpoint; anything else is development only and prints a DEV ONLY warning |
 | `FIXPROOF_PLANNER_MODEL` | `nvidia/Nemotron-3-Ultra-550b-a55b` | Planner model |
@@ -341,7 +344,7 @@ apply and pull-request flows, the benchmark runner, and secret redaction.
 | Service | What it receives |
 |---|---|
 | Nebius Token Factory (inference) | Prompts with the task, repository file names and excerpts, test output, and tool results |
-| NVIDIA API or OpenRouter (personal mode only, instead of Token Factory) | The same prompts; with the local Docker executor, the code itself stays on your machine. OpenRouter passes prompts to the host serving the model; its privacy settings say what free variants may log |
+| NVIDIA API, OpenRouter, or Requesty (personal mode only, instead of Token Factory) | The same prompts; with the local Docker executor, the code itself stays on your machine. OpenRouter and Requesty pass prompts to the host serving the model, whose data terms may allow training on free requests |
 | Token Factory Sandboxes | The repository tarball and the commands the agent runs |
 | GitHub | Requests for public repository metadata, the tarball, and the issue; with `fixproof pr`, the fork, branch, changed files, and pull request |
 | Tavily (only with `FIXPROOF_WEB_SEARCH=1`) | Short search queries (at most 200 characters, never file contents, never anything that contains a secret) |

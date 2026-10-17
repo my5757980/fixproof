@@ -133,10 +133,10 @@ Then create a Docker Space, push the repository, and set the `.env` values as **
 **Never** set `FIXPROOF_ALLOW_DEV` or a non-Nebius `NEBIUS_BASE_URL` there. Verify that
 `/api/health` reports `live_runs_available: true` and `executor: contree`.
 
-## Personal mode (constitution 2.2.0, FR-024)
+## Personal mode (constitution 2.3.0, FR-024)
 
 ```bash
-cp .env.personal.example .env      # FIXPROOF_PROVIDER=nvidia or openrouter, its key, FIXPROOF_EXECUTOR=docker
+cp .env.personal.example .env      # FIXPROOF_PROVIDER=nvidia, openrouter, or requesty, its key, FIXPROOF_EXECUTOR=docker
 uv run fixproof doctor             # key set, model IDs listed by the provider, Docker reachable
 FIXPROOF_BASE_IMAGE=python:3.9 uv run fixproof fix --repo https://github.com/psf/requests \
   --ref 22623bd8c265b78b161542663ee980738441c307 \

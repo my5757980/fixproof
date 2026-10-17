@@ -299,11 +299,12 @@ and no pull request is opened without explicit approval.
   report the verified-fix rate, without ever showing the agent the reference fix.
 
 **Personal mode** *(added 2026-10-15, constitution 2.1.0; OpenRouter added 2026-10-15,
-constitution 2.2.0)*
+constitution 2.2.0; Requesty added 2026-10-17, constitution 2.3.0)*
 
 - **FR-024**: Outside the hackathon configuration, the agent MUST be able to run in an explicitly
   selected personal mode that uses NVIDIA Nemotron models (with the same roles) from one
-  OpenAI-compatible provider, NVIDIA's own API or OpenRouter, and the local isolated environment.
+  OpenAI-compatible provider (NVIDIA's own API, OpenRouter, or Requesty) and the local isolated
+  environment.
   Personal mode MUST never be the default or an automatic fallback (nor fall back from one
   provider to the other), and every place that shows results (the readiness check, reports,
   benchmark summaries) MUST say it is not the hackathon platform and name the provider.

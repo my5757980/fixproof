@@ -35,9 +35,11 @@ ENV_VARS = [
     "FIXPROOF_PROVIDER",
     "NVIDIA_API_KEY",
     "OPENROUTER_API_KEY",
+    "REQUESTY_API_KEY",
 ]
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/"
+REQUESTY_URL = "https://router.requesty.ai/v1/"
 
 
 @pytest.fixture
@@ -232,6 +234,44 @@ def test_openrouter_is_labelled_as_personal_mode(clean_env: None) -> None:
     note = make(provider="openrouter", executor="docker").platform_note()
     assert note is not None and "not the hackathon platform" in note.lower()
     assert "OpenRouter (personal mode)" in note and "local Docker" in note
+
+
+# -- personal mode through Requesty (constitution 2.3.0) -------------------------------------
+
+
+def test_requesty_uses_the_nvidia_model_ids(clean_env: None) -> None:
+    s = make(provider="requesty")
+    assert s.is_personal_mode() and s.nebius_base_url == REQUESTY_URL
+    assert s.planner_model == "nvidia/nemotron-3-ultra-550b-a55b"
+    assert s.worker_model == "nvidia/nemotron-3-super-120b-a12b"
+    assert s.fallback_model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert not s.is_dev_endpoint()
+    assert make(provider="requesty", nebius_base_url=OPENROUTER_URL).is_dev_endpoint()
+
+
+def test_requesty_uses_its_own_key(clean_env: None) -> None:
+    with pytest.raises(ConfigError, match=r"REQUESTY_API_KEY.*app\.requesty\.ai"):
+        make(provider="requesty", openrouter_api_key="sk-or-v1-other-123456").require_api_key()
+    s = make(provider="requesty", requesty_api_key="rq-test-123456")
+    assert s.require_api_key() == "rq-test-123456" and s.api_key_variable() == "REQUESTY_API_KEY"
+    assert "rq-test-123456" in s.secret_values()
+
+
+def test_requesty_prices_only_its_free_nvidia_models_at_zero(clean_env: None) -> None:
+    table = make(provider="requesty").price_table()
+    for model in ("nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b"):
+        assert table[model] == (0.0, 0.0)
+    assert (
+        "deepinfra/nvidia/nemotron-3-super"
+        not in make(
+            provider="requesty", worker_model="deepinfra/nvidia/Nemotron-3-Super"
+        ).price_table()
+    )
+
+
+def test_requesty_is_labelled_as_personal_mode(clean_env: None) -> None:
+    note = make(provider="requesty", executor="docker").platform_note()
+    assert note is not None and "Requesty (personal mode)" in note
 
 
 def test_the_env_examples_cover_every_setting(clean_env: None) -> None:

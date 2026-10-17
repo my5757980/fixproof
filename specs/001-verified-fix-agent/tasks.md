@@ -873,11 +873,11 @@ documentation, and the hackathon submission package.
 
 ---
 
-## Phase 8: Personal Mode (FR-024, constitution 2.1.0 and 2.2.0, plan D12 and D13)
+## Phase 8: Personal Mode (FR-024, constitution 2.1.0 to 2.3.0, plan D12 to D14)
 
 **Purpose**: Make FixProof complete and usable without the hackathon platform: NVIDIA Nemotron
-models from NVIDIA's own API or OpenRouter, and the local Docker executor, selected explicitly
-and always labeled.
+models from NVIDIA's own API, OpenRouter, or Requesty, and the local Docker executor, selected
+explicitly and always labeled.
 
 - [X] T092 [P] Write tests in `tests/unit/test_config.py`: `FIXPROOF_PROVIDER=nvidia` switches the
   default base URL to `https://integrate.api.nvidia.com/v1/` and the default model IDs to the
@@ -923,6 +923,15 @@ and always labeled.
   `config.py`, the shared key lookup in `doctor`, the provider-neutral demo guard and model
   error), and update `.env.example`, `.env.personal.example`, the README, spec FR-024, plan D13,
   and quickstart.md.
+- [X] T100 [P] Write tests for Requesty (constitution 2.3.0, plan D14): `FIXPROOF_PROVIDER=
+  requesty` switches to `https://router.requesty.ai/v1/` and the NVIDIA IDs; the key comes from
+  `REQUESTY_API_KEY` (a missing key names it and app.requesty.ai) and is redacted; only the three
+  listed models cost $0; the platform note names Requesty; `assert_demo_safe` refuses it;
+  `doctor` names the key.
+- [X] T101 Implement Requesty as a third entry in `PERSONAL_PROVIDERS`, and update the `.env`
+  examples, the README, spec FR-024, plan D14, and quickstart.md.
+- [ ] T102 With the owner's Requesty key: `fixproof doctor`, confirm the free daily limit in the
+  account, then a real run on psf__requests-1142 with the default budget; record the result.
 
 ---
 

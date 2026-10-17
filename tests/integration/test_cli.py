@@ -193,6 +193,17 @@ def test_doctor_with_openrouter_names_the_openrouter_key(monkeypatch: pytest.Mon
     assert "not the hackathon platform" in endpoint["detail"]
 
 
+def test_doctor_with_requesty_names_the_requesty_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(provider="requesty", nebius_api_key=None, executor="docker")
+    monkeypatch.setattr(cli, "factories", doctor_factories(settings))
+    checks = {c["name"]: c for c in json.loads(invoke("doctor", "--json").stdout)}
+    assert checks["REQUESTY_API_KEY"]["ok"] is False
+    assert "app.requesty.ai" in checks["REQUESTY_API_KEY"]["hint"]
+    endpoint = checks["Model endpoint"]
+    assert endpoint["detail"].startswith("https://router.requesty.ai/")
+    assert "not the hackathon platform" in endpoint["detail"]
+
+
 def test_doctor_flags_a_billed_openrouter_model_without_a_price(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
