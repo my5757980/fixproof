@@ -49,6 +49,10 @@ EXTRACT_COMMAND = (
     f"&& rm -f {TARBALL_PATH}"
 )
 STEP_SCRIPT = "/tmp/fixproof-step.sh"  # a chain container runs this script on every start
+DOCKER_TIMEOUT_S = 600
+# A commit took up to 600 s and more under memory pressure (2026-10-17), and a killed commit
+# loses the whole setup, so it gets much longer than other docker commands.
+COMMIT_TIMEOUT_S = 1800
 
 Runner = Callable[[Sequence[str], bytes | None, float | None], Awaitable[tuple[int, bytes, bytes]]]
 EventCallback = Callable[[EventType, dict[str, Any]], None]
@@ -187,7 +191,7 @@ class DockerExecutor:
             return _read_tarball(layers.tarball, relative)
         container = await self._create(layers.image, "true", network=False)
         try:
-            code, stdout, _ = await self._runner(
+            code, stdout, _ = await self._call(
                 ["docker", "cp", f"{container}:{REPO_ROOT}/{relative}", "-"], None, 60
             )
         finally:
@@ -409,7 +413,7 @@ class DockerExecutor:
 
     async def _copy_in(self, container: str, directory: str, files: Mapping[str, bytes]) -> None:
         """Stream ``files`` (paths relative to ``directory``) into a container as one tar."""
-        code, _, stderr = await self._runner(
+        code, _, stderr = await self._call(
             ["docker", "cp", "-", f"{container}:{directory}"], _tar(files), 120
         )
         if code != 0:
@@ -422,7 +426,8 @@ class DockerExecutor:
                 ["docker", "start", "-a", container], None, timeout_s
             )
         except TimeoutError:
-            await self._runner(["docker", "kill", container], None, 30)
+            with contextlib.suppress(Exception):  # close() removes the container in any case
+                await self._runner(["docker", "kill", container], None, 30)
             return CommandResult(
                 stdout="",
                 stderr=f"The command timed out after {timeout_s} s.",
@@ -449,7 +454,7 @@ class DockerExecutor:
         return container
 
     async def _commit(self, container: str) -> str:
-        image = (await self._docker("commit", container)).strip()
+        image = (await self._docker("commit", container, timeout_s=COMMIT_TIMEOUT_S)).strip()
         self._images.append(image)
         return image
 
@@ -458,11 +463,23 @@ class DockerExecutor:
         with contextlib.suppress(Exception):
             await self._runner(["docker", "rm", "-f", container], None, 60)
 
-    async def _docker(self, *args: str) -> str:
-        code, stdout, stderr = await self._runner(["docker", *args], None, 600)
+    async def _docker(self, *args: str, timeout_s: int = DOCKER_TIMEOUT_S) -> str:
+        code, stdout, stderr = await self._call(["docker", *args], None, timeout_s)
         if code != 0:
             raise ExecutorError(f"docker {args[0]} failed (exit {code}): {_text(stderr)[-500:]}")
         return _text(stdout)
+
+    async def _call(
+        self, args: Sequence[str], stdin: bytes | None, timeout_s: float
+    ) -> tuple[int, bytes, bytes]:
+        """Run one docker command; a timeout is an ``ExecutorError`` that names the command."""
+        try:
+            return await self._runner(args, stdin, timeout_s)
+        except TimeoutError as exc:
+            raise ExecutorError(
+                f"docker {args[1]} did not finish within {timeout_s:.0f} s; Docker may be short "
+                "of memory (close other programs or give Docker Desktop more memory)"
+            ) from exc
 
     def _publish(
         self,

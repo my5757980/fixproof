@@ -15,6 +15,7 @@ import pytest
 from fixproof.models import Snapshot
 from fixproof.sandbox.docker_dev import (
     BANNER,
+    COMMIT_TIMEOUT_S,
     EXTRACT_COMMAND,
     STEP_SCRIPT,
     TARBALL_PATH,
@@ -31,6 +32,8 @@ class FakeDocker:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.stdin: list[bytes | None] = []
+        self.timeouts: list[float | None] = []
+        self.commit_timeout = False
         self.ids = itertools.count(1)
         self.start_result: tuple[int, bytes, bytes] = (0, b"out", b"")
         self.start_results: deque[tuple[int, bytes, bytes]] = deque()  # used first, in order
@@ -43,10 +46,13 @@ class FakeDocker:
     ) -> tuple[int, bytes, bytes]:
         self.calls.append(list(args))
         self.stdin.append(stdin)
+        self.timeouts.append(timeout)
         command = args[1]
         if command == "create":
             return 0, f"container-{next(self.ids)}\n".encode(), b""
         if command == "commit":
+            if self.commit_timeout:
+                raise TimeoutError
             return 0, f"sha256:image-{next(self.ids)}\n".encode(), b""
         if command == "start":
             if self.start_timeout:
@@ -194,6 +200,19 @@ async def test_a_failed_rebuild_is_an_executor_error() -> None:
     docker.start_results.append((1, b"", b"network down"))
     with pytest.raises(ExecutorError, match="rebuild"):
         await executor.run(first, "python -m pytest", timeout_s=60, mutate=False)
+
+
+async def test_commits_get_a_long_timeout_and_a_clear_error() -> None:
+    executor, docker = make()
+    _, installed = await executor.run(SNAPSHOT, "pip install -e .", timeout_s=600, mutate=True)
+    docker.commit_timeout = True
+    with pytest.raises(ExecutorError, match=r"docker commit did not finish within 1800 s"):
+        await executor.run(installed, "python -m pytest", timeout_s=60, mutate=False)
+    commit_index = docker.calls.index(docker.commands("commit")[0])
+    assert docker.timeouts[commit_index] == COMMIT_TIMEOUT_S
+    docker.commit_timeout = False
+    result, _ = await executor.run(installed, "python -m pytest", timeout_s=60, mutate=False)
+    assert result.ok  # the chain is still there, so the next use commits it
 
 
 async def test_timeouts_kill_the_container_and_keep_the_snapshot() -> None:
