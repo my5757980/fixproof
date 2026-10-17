@@ -39,6 +39,14 @@ key dialog). `fixproof doctor` passed (key set, Requesty endpoint labeled person
 NVIDIA IDs listed, Docker reachable), and a test call to the worker answered "OK" in 2.7 s at
 $0. Then the real run started: psf__requests-1142, python:3.9, `--max-steps 40 --max-minutes 60`.
 
+That run (run-20261017-093509-5199b6) set up in 323 s, but its one commit hit the 600 s limit
+of every docker command and the bare TimeoutError ended it as an internal error after 1401 s.
+Claude gave commits 1800 s, turned docker timeouts into `ExecutorError`s, kept the chain for a
+retry after a failed commit (commit e22a8a2, 440 offline tests passed), and started the run
+again. The retry reproduced the bug (a failing test before the fix, after 15 steps) and entered
+the fix phase, then Claude Code stopped the background run for critically low memory. It was not
+restarted without the user; no process or container was left behind.
+
 ## Outcome
 
 - ✅ Impact: personal mode runs through Requesty with the larger free limit.
