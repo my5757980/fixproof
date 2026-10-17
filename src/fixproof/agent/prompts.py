@@ -49,6 +49,8 @@ How to work:
 - Read before you edit: use search_code and read_file to find the code. read_file shows \
 "<line>: <text>"; copy old_text for edit_file exactly, without the line-number prefixes.
 - Make the smallest change that fixes the root cause.
+- Do not create scratch, debug, or extra test files: every file you create ends up in the \
+patch. For a quick check, use run_command (for example python -c "...").
 - Never modify, skip, or delete existing tests, and never weaken assertions, to make tests pass.
 - When you are done, call finish with a summary, the root cause, and citations (path, \
 start_line, end_line) of the code involved. The harness then verifies your work independently; \
@@ -326,7 +328,9 @@ def reproduce_message(
             "1. Find the code involved.\n"
             "2. Write ONE new pytest test that fails because of this bug, in a new file such as "
             "tests/test_fixproof_repro.py. It must fail on an assertion or on the reported "
-            "exception, not on an import error or a typo.\n"
+            "exception, not on an import error or a typo. Put only this one test in the file: "
+            "every test you add must also pass after the fix, so tests of other behavior only "
+            "make the fix harder.\n"
             "3. Run it with run_tests and check that it fails for the right reason.\n"
             "4. Call finish with a one-line summary and your current understanding of the root "
             "cause.",

@@ -903,6 +903,12 @@ and always labeled.
   `Content-Length: 0`), but its fix attempt was incomplete and it spent steps on extra test and
   debug files. Setup took 368 s with no commit. The free Ultra variant timed out twice (about
   6.5 min lost), so the owner's `.env` now plans with Super.
+  2026-10-17, same task: `run-20261017-075202-e1ae42` ended Not verified (not reproducible)
+  because `search_code` returned no matches for a single-file path (grep omits the file name;
+  fixed with `-H`); `run-20261017-084258-8018d4` (25 steps, the free daily limit) reproduced the
+  bug in 417 s, then ran out of steps after 845 s: extra tests the agent put in its reproduction
+  file conflicted with the right fix. The worker prompts now ask for that one failing test only
+  and no scratch files (the first run's patch carried five of them).
 - [X] T097 Measure where a real Docker run spends its time and speed up the Docker executor on
   slow machines (for example, fewer image commits), with tests for any behavior change.
   Done 2026-10-16 (research R5): commits took 79% of a run (51-374 s each); the tarball, file
