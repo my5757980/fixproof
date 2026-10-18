@@ -174,6 +174,7 @@ class HypothesisRunner:
                 command_timeout_s=setup.limits.command_timeout_s,
                 attempt_id=attempt.id,
                 web_search=setup.web_search,
+                frozen_files=set(setup.repro_files),
             )
             worker = Worker(
                 gateway,

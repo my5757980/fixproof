@@ -140,8 +140,8 @@ escape the root via `..` are rejected with `path_outside_repo`.
 | `list_dir` | `{"entries": [{"path": str, "type": "file"\|"dir", "size": int}], "truncated": bool}` | `path_outside_repo`, `not_found` |
 | `read_file` | `{"path": str, "start_line": int, "end_line": int, "total_lines": int, "text": "<n>: <line>\n..."}` (≤ 400 lines per call) | `path_outside_repo`, `not_found`, `binary_file` |
 | `search_code` | `{"matches": [{"path": str, "line": int, "text": str}], "truncated": bool}` | `invalid_pattern` |
-| `create_file` | `{"path": str, "created": true, "snapshot": str}` | `already_exists`, `path_outside_repo` |
-| `edit_file` | `{"path": str, "diff": "<unified diff of the edit>", "snapshot": str}` | `not_found`, `no_match`, `multiple_matches` (with count), `test_file_edit_blocked_in_reproduce`, `path_outside_repo` |
+| `create_file` | `{"path": str, "created": true, "snapshot": str}` | `already_exists`, `path_outside_repo`, `repro_test_frozen_in_fix` |
+| `edit_file` | `{"path": str, "diff": "<unified diff of the edit>", "snapshot": str}` | `not_found`, `no_match`, `multiple_matches` (with count), `test_file_edit_blocked_in_reproduce`, `repro_test_frozen_in_fix` (the reproduction test files during the fix phase), `path_outside_repo` |
 | `run_tests` | `{"exit_code": int, "counts": {"passed": n, "failed": n, "error": n, "skipped": n}, "failures": [{"node_id": str, "message": str}], "output_tail": str, "timed_out": bool, "test_run_id": str}` | `timeout` (returned as `timed_out: true`) |
 | `run_command` | `{"exit_code": int, "stdout": str, "stderr": str, "timed_out": bool}` | `forbidden_command` (see guards) |
 | `web_search` | `{"results": [{"title": str, "url": str, "snippet": str}]}` | `disabled`, `search_failed` |

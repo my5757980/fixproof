@@ -365,7 +365,8 @@ def fix_message(
         + (data_block("tests", failure) + "\n" if failure else "")
         + "Change the source code so that this test passes without breaking other tests. Run "
         "the reproduction test and the tests near your change with run_tests. Do not modify "
-        "existing tests. When you are done, call finish with summary, root_cause, and citations."
+        "existing tests; the reproduction test is frozen now, it is the evidence. When you are "
+        "done, call finish with summary, root_cause, and citations."
     )
     return "\n\n".join(parts)
 

@@ -371,6 +371,20 @@ async def test_j_source_files_are_frozen_while_reproducing(tmp_runs_dir: Path) -
     assert run.label is OutcomeLabel.VERIFIED
 
 
+async def test_j2_the_reproduction_test_is_frozen_while_fixing(tmp_runs_dir: Path) -> None:
+    sneaky = reply_tool(
+        "edit_file", path=REPRO_PATH, old_text="assert", new_text="assert True or", purpose="x"
+    )
+    s = make_scenario(tmp_runs_dir, worker=[*reproduce_replies(), sneaky, *fix_replies()])
+    run = await s.run()
+
+    [result] = [
+        e for e in s.events(EventType.TOOL_RESULT) if e.data["call_id"] == sneaky.tool_calls[0].id
+    ]
+    assert result.data["error"] == "repro_test_frozen_in_fix"
+    assert run.label is OutcomeLabel.VERIFIED
+
+
 async def test_k_service_unavailable_keeps_partial_evidence(tmp_runs_dir: Path) -> None:
     s = make_scenario(
         tmp_runs_dir, planner=[plan_reply(), unavailable(ModelRole.PLANNER)], worker=[]

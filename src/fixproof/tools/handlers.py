@@ -6,6 +6,7 @@ never left to the model:
 - every path must stay inside the repository root;
 - ``run_command`` always runs disposably and rejects forbidden commands;
 - in the reproduce phase, files that existed before the phase are frozen;
+- in the fix phase, the reproduction test files are frozen (they are the evidence);
 - output sent back to the model is bounded (``…[truncated N chars]``).
 
 A handler raises ``ToolInputError`` for anything the model can fix (a wrong path, an ambiguous
@@ -108,6 +109,8 @@ class ToolContext:
         created_files: Files created by ``create_file`` in this conversation.
         phase_start: Snapshot at the start of the current phase.
         web_search: Optional search backend.
+        frozen_files: Files that may not be created or edited in this phase (the reproduction
+            test files during the fix phase).
     """
 
     executor: Executor
@@ -120,6 +123,7 @@ class ToolContext:
     created_files: set[str] = field(default_factory=set)
     phase_start: Snapshot | None = None
     web_search: WebSearch | None = None
+    frozen_files: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         if self.phase_start is None:
@@ -257,10 +261,16 @@ def repo_path(path: str, *, allow_root: bool = True) -> str:
     return normalized
 
 
-def _writable_path(path: str) -> str:
+def _writable_path(path: str, ctx: ToolContext) -> str:
     normalized = repo_path(path, allow_root=False)
     if normalized.split("/", 1)[0] == ".git":
         raise ToolInputError("path_outside_repo", "Files inside .git cannot be changed.")
+    if normalized in ctx.frozen_files:
+        raise ToolInputError(
+            "repro_test_frozen_in_fix",
+            f"{normalized} holds the reproduction test, the evidence for this fix, so it cannot "
+            "change in the fix phase. Change the source code so that the test passes.",
+        )
     return normalized
 
 
@@ -420,7 +430,7 @@ async def search_code(ctx: ToolContext, args: SearchCodeArgs) -> ToolOutcome:
 
 async def create_file(ctx: ToolContext, args: CreateFileArgs) -> ToolOutcome:
     """Create a new file; fails if the path already exists."""
-    path = _writable_path(args.path)
+    path = _writable_path(args.path, ctx)
     if await _exists(ctx, path):
         raise ToolInputError(
             "already_exists", f"{path} already exists; use edit_file to change it."
@@ -436,7 +446,7 @@ async def create_file(ctx: ToolContext, args: CreateFileArgs) -> ToolOutcome:
 
 async def edit_file(ctx: ToolContext, args: EditFileArgs) -> ToolOutcome:
     """Replace exactly one occurrence of ``old_text`` and return the diff of the edit."""
-    path = _writable_path(args.path)
+    path = _writable_path(args.path, ctx)
     if ctx.phase is ToolPhase.REPRODUCE and path not in ctx.created_files:
         raise ToolInputError(
             "test_file_edit_blocked_in_reproduce",

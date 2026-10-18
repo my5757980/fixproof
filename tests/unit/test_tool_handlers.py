@@ -223,6 +223,26 @@ async def test_existing_files_are_frozen_in_reproduce_phase() -> None:
     assert "error" not in out
 
 
+async def test_the_reproduction_test_is_frozen_in_the_fix_phase() -> None:
+    """A real run renamed its reproduction test while fixing, so verification lost it."""
+    b = await make_box(ToolPhase.FIX)
+    b.box.context.frozen_files = {"tests/test_core.py"}
+    out = await b.call(
+        "edit_file", path="tests/test_core.py", old_text="== 5", new_text="== 6", purpose="p"
+    )
+    assert out["error"] == "repro_test_frozen_in_fix"
+    out = await b.call("create_file", path="tests/test_core.py", content="x = 1\n", purpose="p")
+    assert out["error"] == "repro_test_frozen_in_fix"
+    out = await b.call(
+        "edit_file",
+        path="pkg/core.py",
+        old_text="return a - b",
+        new_text="return a + b",
+        purpose="p",
+    )
+    assert "error" not in out
+
+
 async def test_run_tests_returns_structured_results_and_publishes_event() -> None:
     b = await make_box()
 

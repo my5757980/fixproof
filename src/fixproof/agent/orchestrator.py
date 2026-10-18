@@ -712,6 +712,7 @@ class Orchestrator:
         context = worker.toolbox.context
         context.snapshot = repro
         context.enter_phase(ToolPhase.FIX)
+        context.frozen_files = set(self._repro_files)  # the evidence must not change now
         worker.attempt_id = attempt.id
         message = prompts.fix_message(
             run.task, self._plan, evidence, paths=self._paths, include_context=include_context
