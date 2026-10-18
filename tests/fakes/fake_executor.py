@@ -9,8 +9,10 @@ extra rules (regex -> handler) and control behavior through simple switches.
 from __future__ import annotations
 
 import asyncio
+import base64
 import difflib
 import fnmatch
+import gzip
 import inspect
 import io
 import itertools
@@ -24,7 +26,7 @@ from xml.sax.saxutils import quoteattr
 
 from fixproof.models import Snapshot, TestCaseResult, TestOutcome
 from fixproof.sandbox.executor import BASELINE_TAG, PATCH_MARKERS, CommandResult, DirEntry
-from fixproof.sandbox.pytest_results import JUNIT_BEGIN, JUNIT_END, OUT_BEGIN, OUT_END
+from fixproof.sandbox.pytest_results import JUNIT_GZ_BEGIN, JUNIT_GZ_END, OUT_BEGIN, OUT_END
 
 Files = dict[str, bytes]
 RuleResult = CommandResult | tuple[CommandResult, Files]
@@ -274,9 +276,8 @@ def render_pytest_stdout(results: list[TestCaseResult], console: str = "") -> st
         '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" time="0.010">'
         f"{''.join(cases)}</testsuite></testsuites>"
     )
-    if not results:
-        xml = ""
-    return f"{JUNIT_BEGIN}\n{xml}\n{JUNIT_END}\n{OUT_BEGIN}\n{console}\n{OUT_END}\n"
+    packed = base64.b64encode(gzip.compress(xml.encode("utf-8"))).decode() if results else ""
+    return f"{OUT_BEGIN}\n{console}\n{OUT_END}\n{JUNIT_GZ_BEGIN}\n{packed}\n{JUNIT_GZ_END}\n"
 
 
 def outcome(node_id: str, result: str = "passed", message: str | None = None) -> TestCaseResult:

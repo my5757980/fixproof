@@ -1,15 +1,22 @@
 """Run pytest inside the sandbox and parse its JUnit XML (research.md R7).
 
-The command prints the JUnit XML report and the tail of the console output between unique
-markers, so results can be read from stdout of a disposable sandbox run. ``xunit1`` is used
+The command prints the tail of the console output and then the JUnit XML report, gzipped and
+base64-encoded, between unique markers, so results can be read from stdout of a disposable
+sandbox run. Executors keep only the end of a long stdout (64 KB), and a suite of a few hundred
+tests writes more XML than that, so the report is compressed and printed last; the parser reads
+the last report block, which the repository's own output cannot come after. ``xunit1`` is used
 because it includes the ``file`` attribute, which gives exact pytest node IDs.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
+import gzip
 import itertools
 import shlex
 import xml.etree.ElementTree as ET
+import zlib
 
 from fixproof.events import EventBus, EventType
 from fixproof.models import Snapshot, TestCaseResult, TestOutcome, TestRun
@@ -17,10 +24,16 @@ from fixproof.sandbox.executor import Executor
 
 JUNIT_PATH = "/tmp/fixproof-junit.xml"
 OUT_PATH = "/tmp/fixproof-pytest-out.txt"
-JUNIT_BEGIN = "===FIXPROOF-JUNIT-BEGIN==="
+JUNIT_BEGIN = "===FIXPROOF-JUNIT-BEGIN==="  # plain XML (older traces and test fakes)
 JUNIT_END = "===FIXPROOF-JUNIT-END==="
+JUNIT_GZ_BEGIN = "===FIXPROOF-JUNIT-GZ-BEGIN==="  # gzip + base64 XML, printed last
+JUNIT_GZ_END = "===FIXPROOF-JUNIT-GZ-END==="
 OUT_BEGIN = "===FIXPROOF-OUT-BEGIN==="
 OUT_END = "===FIXPROOF-OUT-END==="
+_ENCODE_JUNIT = (
+    "import base64,gzip,sys;"
+    'sys.stdout.write(base64.b64encode(gzip.compress(open(sys.argv[1],"rb").read())).decode())'
+)
 
 _MESSAGE_LIMIT = 2000
 _OUTPUT_TAIL_LIMIT = 4000
@@ -61,9 +74,10 @@ def build_pytest_command(
     return (
         f"rm -f {JUNIT_PATH} {OUT_PATH}; "
         f"{pytest_cmd} > {OUT_PATH} 2>&1; code=$?; "
-        f"echo '{JUNIT_BEGIN}'; cat {JUNIT_PATH} 2>/dev/null; echo; echo '{JUNIT_END}'; "
         f"echo '{OUT_BEGIN}'; tail -c {output_tail_chars} {OUT_PATH} 2>/dev/null; echo; "
-        f"echo '{OUT_END}'; exit $code"
+        f"echo '{OUT_END}'; "
+        f"echo '{JUNIT_GZ_BEGIN}'; python -c {shlex.quote(_ENCODE_JUNIT)} {JUNIT_PATH} "
+        f"2>/dev/null; echo; echo '{JUNIT_GZ_END}'; exit $code"
     )
 
 
@@ -92,7 +106,8 @@ def parse_test_output(
     Returns:
         The parsed test run.
     """
-    xml_text = _between(stdout, JUNIT_BEGIN, JUNIT_END)
+    packed = _last_between(stdout, JUNIT_GZ_BEGIN, JUNIT_GZ_END)
+    xml_text = _unpack(packed) if packed is not None else _between(stdout, JUNIT_BEGIN, JUNIT_END)
     console = _between(stdout, OUT_BEGIN, OUT_END)
     if console is None:
         console = stdout
@@ -189,6 +204,30 @@ def _between(text: str, begin: str, end: str) -> str | None:
     if stop == -1:
         return text[start:]
     return text[start:stop]
+
+
+def _last_between(text: str, begin: str, end: str) -> str | None:
+    """Return the text between the last ``begin`` and the ``end`` after it.
+
+    The real report is the last thing the command prints, so a marker that a test printed into
+    the console tail before it can never be taken for the report.
+    """
+    start = text.rfind(begin)
+    if start == -1:
+        return None
+    start += len(begin)
+    stop = text.find(end, start)
+    return text[start:stop] if stop != -1 else None
+
+
+def _unpack(packed: str) -> str | None:
+    """Decode a gzip + base64 JUnit report; ``None`` if it is missing or damaged."""
+    if not packed.strip():
+        return None
+    try:
+        return gzip.decompress(base64.b64decode(packed.strip(), validate=True)).decode("utf-8")
+    except (binascii.Error, OSError, EOFError, zlib.error, UnicodeDecodeError):
+        return None
 
 
 def _parse_junit(xml_text: str) -> tuple[tuple[TestCaseResult, ...], float]:

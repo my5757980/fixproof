@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import base64
+import gzip
 import shlex
 from pathlib import Path
 
 import pytest
 
 from fixproof.models import TestOutcome
+from fixproof.sandbox.docker_dev import OUTPUT_LIMIT
 from fixproof.sandbox.pytest_results import (
     JUNIT_BEGIN,
     JUNIT_END,
+    JUNIT_GZ_BEGIN,
+    JUNIT_GZ_END,
     OUT_BEGIN,
     OUT_END,
     build_pytest_command,
@@ -19,7 +24,29 @@ DATA = Path(__file__).parent / "data"
 
 
 def wrap(xml: str, console: str = "1 failed, 1 passed") -> str:
+    """The older plain format, still accepted."""
     return f"{JUNIT_BEGIN}\n{xml}\n{JUNIT_END}\n{OUT_BEGIN}\n{console}\n{OUT_END}\n"
+
+
+def packed(xml: str, console: str = "1 failed, 1 passed") -> str:
+    """The format ``build_pytest_command`` prints: console tail, then gzip + base64 XML."""
+    payload = base64.b64encode(gzip.compress(xml.encode())).decode()
+    return f"{OUT_BEGIN}\n{console}\n{OUT_END}\n{JUNIT_GZ_BEGIN}\n{payload}\n{JUNIT_GZ_END}\n"
+
+
+def big_suite(count: int) -> str:
+    """A JUnit report of ``count`` tests; every tenth one fails with a long message."""
+    cases = []
+    for i in range(count):
+        failure = f'<failure message="boom">{"x" * 300}</failure>' if i % 10 == 0 else ""
+        cases.append(
+            f'<testcase classname="tests.test_big" name="test_{i}" file="tests/test_big.py" '
+            f'time="0.001">{failure}</testcase>'
+        )
+    body = "".join(cases)
+    return (
+        f'<?xml version="1.0"?><testsuites><testsuite name="pytest">{body}</testsuite></testsuites>'
+    )
 
 
 def parse(xml_file: str, exit_code: int = 1) -> object:
@@ -33,9 +60,36 @@ def test_build_command_contains_markers_and_flags() -> None:
     assert "-p no:cacheprovider" in cmd and "--junitxml=/tmp/fixproof-junit.xml" in cmd
     # One test module that fails to import must not stop every other test from running.
     assert "--continue-on-collection-errors" in cmd
-    assert JUNIT_BEGIN in cmd and JUNIT_END in cmd and OUT_BEGIN in cmd and OUT_END in cmd
+    assert JUNIT_GZ_BEGIN in cmd and JUNIT_GZ_END in cmd and OUT_BEGIN in cmd and OUT_END in cmd
+    # The compressed report comes last, because executors keep only the end of long output.
+    assert cmd.index(OUT_END) < cmd.index(JUNIT_GZ_BEGIN)
+    assert "gzip" in cmd and "base64" in cmd
     assert "tail -c 4000" in cmd
     assert shlex.quote("tests/test_math.py::test_div[2-0]") in cmd
+
+
+def test_a_large_suite_survives_the_executor_output_limit() -> None:
+    """The flask suite (484 tests) wrote more XML than 64 KB, so results were lost (2026-10-18)."""
+    xml = big_suite(2000)
+    assert len(xml) > 4 * OUTPUT_LIMIT
+    stdout = ("console line\n" * 20000 + packed(xml))[-OUTPUT_LIMIT:]
+    run = parse_test_output(stdout, 1, False, "img-1", None, test_run_id="tr-9")
+    assert run.counts == {"passed": 1800, "failed": 200, "error": 0, "skipped": 0}
+
+
+def test_a_report_forged_in_the_console_output_is_ignored() -> None:
+    forged = packed(
+        big_suite(1).replace('<failure message="boom">', "<x>").replace("</failure>", "</x>")
+    )
+    real = packed(big_suite(1))
+    run = parse_test_output(forged + real, 1, False, "img-1", None, test_run_id="tr-10")
+    assert run.counts["failed"] == 1
+
+
+def test_a_damaged_compressed_report_gives_no_results() -> None:
+    stdout = f"{OUT_BEGIN}\nboom\n{OUT_END}\n{JUNIT_GZ_BEGIN}\nnot-base64!\n{JUNIT_GZ_END}\n"
+    run = parse_test_output(stdout, 2, False, "img-1", None, test_run_id="tr-11")
+    assert run.results == () and run.output_tail == "boom"
 
 
 def test_build_command_quotes_selector_tokens() -> None:
