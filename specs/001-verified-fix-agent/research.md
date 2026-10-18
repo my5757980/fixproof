@@ -215,6 +215,11 @@ once Token Factory and Sandboxes access is granted.
   - Add `--continue-on-collection-errors` (2026-10-14): when one test module cannot be imported,
     pytest otherwise runs nothing at all, which leaves no baseline to compare against. Task
     validation found this in real repositories (Requests).
+  - Print the console tail first and then the XML gzipped and base64-encoded (2026-10-18):
+    executors keep only the last 64 KB of output, and the Flask suite (484 tests) wrote more XML
+    than that, so a real run parsed 0 results and could only say Needs review. The parser reads
+    the last report block, which the repository's own output cannot come after, so a test cannot
+    forge results by printing markers. 600 tests now take about 11 KB.
   - Parse the XML with the standard library (`xml.etree.ElementTree`) into per-test outcomes.
   - Re-run baseline failures once to detect flakes.
   - The reproduction test must pass on **3 consecutive** runs to count (FR-007).
