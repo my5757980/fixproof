@@ -52,7 +52,9 @@ class Recorder:
         self.events.append((type, data))
 
 
-def make_client(handler: Any, recorder: Recorder) -> TokenFactoryClient:
+def make_client(
+    handler: Any, recorder: Recorder, reconnect_delays_s: tuple[float, ...] = ()
+) -> TokenFactoryClient:
     def wrapped(request: httpx2.Request) -> httpx2.Response:
         if request.content:
             recorder.requests.append(json.loads(request.content))
@@ -65,7 +67,12 @@ def make_client(handler: Any, recorder: Recorder) -> TokenFactoryClient:
         max_retries=0,
         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(wrapped)),
     )
-    return TokenFactoryClient(settings(), on_event=recorder, openai_client=openai_client)
+    return TokenFactoryClient(
+        settings(),
+        on_event=recorder,
+        openai_client=openai_client,
+        reconnect_delays_s=reconnect_delays_s,
+    )
 
 
 async def test_tool_call_reply_cost_and_sampling_event() -> None:
@@ -143,6 +150,37 @@ async def test_all_models_unavailable_raises() -> None:
         await make_client(handler, Recorder()).complete(
             ModelRole.WORKER, [{"role": "user", "content": "x"}]
         )
+
+
+async def test_an_unreachable_endpoint_is_tried_again_before_giving_up() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        model = json.loads(request.content)["model"]
+        calls.append(model)
+        if len(calls) <= 2:  # both worker models fail in the first round
+            raise httpx2.ConnectError("connection refused", request=request)
+        return httpx2.Response(200, json=completion(model, {"role": "assistant", "content": "ok"}))
+
+    recorder = Recorder()
+    client = make_client(handler, recorder, reconnect_delays_s=(0.0,))
+    reply = await client.complete(ModelRole.WORKER, [{"role": "user", "content": "x"}])
+    assert reply.content == "ok" and len(calls) == 3
+    messages = [d["message"] for t, d in recorder.events if t is EventType.ERROR]
+    assert any("could not be reached" in message for message in messages)
+
+
+async def test_an_endpoint_that_stays_unreachable_still_fails() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        calls.append(json.loads(request.content)["model"])
+        raise httpx2.ConnectError("connection refused", request=request)
+
+    client = make_client(handler, Recorder(), reconnect_delays_s=(0.0,))
+    with pytest.raises(ModelUnavailableError):
+        await client.complete(ModelRole.WORKER, [{"role": "user", "content": "x"}])
+    assert len(calls) == 4  # two models, two rounds
 
 
 async def test_bad_request_is_not_retried_on_other_models() -> None:

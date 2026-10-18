@@ -8,6 +8,7 @@ models on Nebius. It never falls back to another provider (Constitution I).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -33,6 +34,10 @@ _FALLBACK_ERRORS: tuple[type[Exception], ...] = (
 )
 
 EventCallback = Callable[[EventType, dict[str, Any]], None]
+
+# A real run on 2026-10-18 lost its model connection for about two minutes and ended as
+# "service unavailable" although the endpoint answered again right after.
+RECONNECT_DELAYS_S: tuple[float, ...] = (30.0, 90.0)
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,8 @@ class TokenFactoryClient:
         openai_client: Pre-built ``AsyncOpenAI`` client (tests inject a mock transport here).
         max_retries: SDK-level retries with backoff before falling back to the next model.
         timeout_s: Per-request timeout in seconds.
+        reconnect_delays_s: Waits before trying the whole chain again when no model could be
+            reached at all (a dropped connection or a short outage of the endpoint).
     """
 
     def __init__(
@@ -118,9 +125,11 @@ class TokenFactoryClient:
         openai_client: AsyncOpenAI | None = None,
         max_retries: int = 2,
         timeout_s: float = 120.0,
+        reconnect_delays_s: Sequence[float] = RECONNECT_DELAYS_S,
     ) -> None:
         self._settings = settings
         self._on_event = on_event
+        self._reconnect_delays_s = tuple(reconnect_delays_s)
         self._prices = PriceTable(settings.price_table())
         self._client = openai_client or AsyncOpenAI(
             base_url=settings.nebius_base_url,
@@ -146,42 +155,60 @@ class TokenFactoryClient:
             The normalized reply.
 
         Raises:
-            ModelUnavailableError: If every model in the chain failed with a fallback error.
+            ModelUnavailableError: If every model in the chain failed with a fallback error
+                (after the reconnect waits, when no model could be reached at all).
             openai.APIStatusError: For non-recoverable errors such as an invalid request.
         """
         chain = self._settings.model_chain(role)
         sampling = self._settings.sampling()
-        failures: list[str] = []
-        for model in chain:
-            started = time.monotonic()
-            try:
-                response = await self._client.chat.completions.create(
-                    model=model,
-                    messages=list(messages),  # type: ignore[arg-type]
-                    temperature=float(sampling["temperature"]),
-                    top_p=float(sampling["top_p"]),
-                    max_tokens=int(sampling["max_tokens"]),
-                    **_tool_kwargs(tools),
-                )
-            except _FALLBACK_ERRORS as exc:
-                failures.append(f"{model}: {type(exc).__name__}")
-                self._emit(
-                    EventType.ERROR,
-                    {
-                        "where": "model_call",
-                        "message": (
-                            f"{model} unavailable ({type(exc).__name__}); trying the next model"
-                        ),
-                        "fatal": False,
-                    },
-                )
-                continue
-            if not response.choices:
-                failures.append(f"{model}: empty response")
-                continue
-            fallback_from = chain[0] if model != chain[0] else None
-            return self._to_reply(role, model, response, started, fallback_from, sampling)
-        raise ModelUnavailableError(role, failures)
+        delays = list(self._reconnect_delays_s)
+        while True:
+            failures: list[str] = []
+            unreachable = True
+            for model in chain:
+                started = time.monotonic()
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=model,
+                        messages=list(messages),  # type: ignore[arg-type]
+                        temperature=float(sampling["temperature"]),
+                        top_p=float(sampling["top_p"]),
+                        max_tokens=int(sampling["max_tokens"]),
+                        **_tool_kwargs(tools),
+                    )
+                except _FALLBACK_ERRORS as exc:
+                    unreachable = unreachable and isinstance(exc, openai.APIConnectionError)
+                    failures.append(f"{model}: {type(exc).__name__}")
+                    self._emit(
+                        EventType.ERROR,
+                        {
+                            "where": "model_call",
+                            "message": (
+                                f"{model} unavailable ({type(exc).__name__}); trying the next model"
+                            ),
+                            "fatal": False,
+                        },
+                    )
+                    continue
+                if not response.choices:
+                    unreachable = False
+                    failures.append(f"{model}: empty response")
+                    continue
+                fallback_from = chain[0] if model != chain[0] else None
+                return self._to_reply(role, model, response, started, fallback_from, sampling)
+            if not (unreachable and delays):
+                raise ModelUnavailableError(role, failures)
+            delay = delays.pop(0)
+            self._emit(
+                EventType.ERROR,
+                {
+                    "where": "model_call",
+                    "message": f"The model endpoint could not be reached; trying again in "
+                    f"{delay:.0f} s",
+                    "fatal": False,
+                },
+            )
+            await asyncio.sleep(delay)
 
     async def list_models(self) -> list[str]:
         """Return the model IDs listed by the endpoint's ``/v1/models``."""
