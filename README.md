@@ -8,10 +8,13 @@ on **Nebius Token Factory**, and every command runs in **Token Factory Sandboxes
 
 Built for the Nebius x NVIDIA Global AI Hackathon, track **Coding and Agentic Engineering**.
 
-> **Status (2026-10-14)**: all features are implemented and tested offline (fake model, fake
-> sandbox) and end to end on a local Docker executor with a scripted model. The first live runs
-> on Nebius, the benchmark results, the sample output below, and the public demo URL will be
-> added once our Token Factory and Sandboxes access is active.
+> **Status (2026-10-18)**: all features are implemented and tested offline (fake model, fake
+> sandbox). Nebius Token Factory billing was not available from the author's country
+> (Pakistan), so no run on the hackathon platform has happened and the hackathon submission is
+> not planned. FixProof runs for real in **personal mode** (the same NVIDIA Nemotron models
+> through NVIDIA's API, OpenRouter, or Requesty, with local Docker containers) and has fixed and
+> verified real bugs there; see the sample output and
+> [results in personal mode](#results-in-personal-mode). These are not hackathon results.
 
 ## What it does and who it is for
 
@@ -231,7 +234,28 @@ there is no auto-approve flag. They refuse runs that are not verified unless you
 **draft** pull request whose description cites the evidence and says that an AI agent prepared
 it.
 
-**Sample output**: pending. A real run on Nebius Token Factory and Sandboxes will be shown here.
+**Sample output** (personal mode, not the hackathon platform): a real run on
+[psf/requests#1142](https://github.com/psf/requests/issues/1142) with NVIDIA Nemotron 3 Super
+through Requesty and local Docker, shortened:
+
+```text
+$ FIXPROOF_BASE_IMAGE=python:3.9 uv run fixproof fix --repo https://github.com/psf/requests \
+    --ref 22623bd8c265b78b161542663ee980738441c307 --max-minutes 60 \
+    --bug "requests.get always sends a Content-Length header, even for a GET without a body."
+Not the hackathon platform: models from Requesty (personal mode), code run in local Docker.
+install: python -m pip install ... -r requirements.txt -> exit 0
+install: python -m pip install ... -e . -> exit 0
+install: python -m pip install ... pytest -> exit 0
+tests tr-1 [full suite]: 5 passed, 21 failed, 0 errors          (the 21 need the network)
+reproduction: tests/test_fixproof_repro.py::test_get_request_has_no_content_length_header
+  fails before the fix: True
+tests tr-6 [full suite]: 6 passed, 21 failed, 0 errors
+verification: verified (reproduction: pass, pass, pass; regressions: 0; modified tests: 0)
+finished: verified (completed) in 955 s, $0.0000
+```
+
+The patch changed only `prepare_content_length` in `requests/models.py` (no `Content-Length`
+header when there is no body) and added the one reproduction test.
 
 ## Benchmark
 
@@ -254,7 +278,23 @@ uv run fixproof bench run --parallel 3 --compare-single   # parallel and single-
 uv run fixproof bench report bench/results/<date>         # Markdown table for this README
 ```
 
-**Results**: pending the first live run on Nebius.
+**Results on the hackathon platform**: none (no Nebius access, see the status above).
+
+### Results in personal mode
+
+Not the hackathon platform: NVIDIA Nemotron 3 Super (planner and worker) and Nemotron 3.5
+Lightning (fallback) through Requesty, code run in local Docker on a 4-CPU, 3.9 GB RAM laptop,
+budget 40 steps and 60 minutes per run, $0 per run.
+
+| Task | How it ran | Label | Time | Fresh re-check | Hidden reference tests |
+|---|---|---|---|---|---|
+| psf__requests-1142 | `fixproof fix` | Verified | 15.9 min | (not run) | (not run) |
+| pallets__flask-5014 | `fixproof bench run --only ... --max-minutes 60` | Verified | 16.1 min | passed | pass (agrees) |
+
+The other tasks in `bench/tasks.toml` have not been run in personal mode yet (the free tiers
+limit requests per day). Earlier real runs found and fixed problems in FixProof itself: lost
+results for large test suites, a reproduction test the worker could rewrite while fixing, a
+search tool that found nothing in single files, and runs ended by a short connection drop.
 
 ## Judge demo
 
