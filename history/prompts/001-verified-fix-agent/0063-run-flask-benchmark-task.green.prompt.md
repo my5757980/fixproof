@@ -52,7 +52,9 @@ unreachable for about two minutes and the run ended as service unavailable; both
 answered again right after, so the client now waits 30 s and 90 s and tries the chain again
 when no model can be reached (commit 0ef2652; 448 offline tests pass). Fourth run: **Verified**
 in 16.1 min at $0, the fresh-environment re-check passed, and the hidden reference tests passed
-(label and hidden tests agree). Then psf__requests-5414 started.
+(label and hidden tests agree). Then psf__requests-5414 started; it reproduced the bug but ended
+as service unavailable after 13.4 min when Requesty returned RateLimitError for both models
+(about 140 model calls that day), so it waits for the free limit to reset. Recorded as T103.
 
 ## Outcome
 
