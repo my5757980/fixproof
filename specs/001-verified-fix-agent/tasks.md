@@ -114,6 +114,11 @@ constitution requires from day one.
   - from then on, commit after each task or logical group and push at least daily;
   - confirm the MIT license shows at the top of the repository page.
 
+  *Status 2026-10-19*: at the user's request, created https://github.com/my5757980/fixproof and
+  pushed the full history (`main` and `001-verified-fix-agent`). It is **private** for now:
+  Claude's auto mode does not create public repositories, so the owner makes it public in
+  Settings → General → Danger Zone → Change visibility. The task is done once it is public.
+
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)

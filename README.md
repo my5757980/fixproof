@@ -152,7 +152,7 @@ Paths must stay inside the repository. `run_command` refuses `git push`, `curl`,
 ## Quickstart
 
 ```bash
-git clone <this repository> fixproof && cd fixproof
+git clone https://github.com/my5757980/fixproof && cd fixproof
 uv sync                       # creates .venv from uv.lock
 cp .env.example .env          # set NEBIUS_API_KEY and CONTREE_PROJECT (never commit .env)
 uv run fixproof doctor        # checks the key, the model IDs, and sandbox access
