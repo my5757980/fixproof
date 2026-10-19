@@ -43,6 +43,9 @@ async function loadHealth() {
   const { status, body } = await api("/api/health");
   const health = $("health");
   if (status !== 200 || !body) { health.textContent = "The service is not reachable."; return; }
+  const platform = $("platform");
+  platform.textContent = body.platform_note || "";
+  platform.hidden = !body.platform_note;
   health.textContent = body.live_runs_available
     ? `Live runs available. Budget left today: $${body.budget_remaining_usd.toFixed(2)}. ` +
       `Active runs: ${body.active_runs}, queued: ${body.queue_length}.`
@@ -282,9 +285,15 @@ async function finish(d) {
     const url = `/api/runs/${encodeURIComponent(run.id)}/patch`;
     const response = await fetch(url);
     if (response.ok) renderDiff(await response.text());
+    else $("diff").replaceChildren(el("span", "Could not load the patch; try the download link.", "note"));
     const link = $("patch-link");
     link.href = url;
     link.hidden = false;
+  } else {
+    const note = run.replay
+      ? "Replays show the timeline and the report; the patch file comes only with live runs."
+      : "This run produced no patch.";
+    $("diff").replaceChildren(el("span", note, "note"));
   }
   loadHealth();
 }

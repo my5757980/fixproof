@@ -415,6 +415,7 @@ class RunManager:
             "queue_length": len(self._queue),
             "executor": self.settings.executor,
             "models": self.settings.models_by_role(),
+            "platform_note": self.settings.platform_note(),
         }
 
     def view(self, run_id: str) -> dict[str, Any] | None:

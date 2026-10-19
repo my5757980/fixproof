@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FixProof: bug fixes with proof</title>
   <meta name="description" content="An autonomous agent that fixes bugs in public Python repositories and proves every fix with tests.">
+  <meta name="theme-color" content="#11161c">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2311161c'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='%2376b900' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,10 +15,10 @@
       <h1>FixProof</h1>
       <p class="tagline">
         An autonomous agent that fixes bugs in public Python repositories and proves every fix
-        with tests. Reasoning by NVIDIA Nemotron on Nebius Token Factory; repository code runs
-        only in Token Factory Sandboxes. The harness, not the model, decides whether a fix is
-        verified.
+        with tests. Reasoning by NVIDIA Nemotron models; repository code runs only in isolated
+        sandboxes. The harness, not the model, decides whether a fix is verified.
       </p>
+      <p id="platform" class="platform-note" hidden></p>
       <p id="health" class="health" role="status">Checking the service…</p>
     </div>
   </header>

@@ -227,6 +227,17 @@ async def test_health_reports_availability_budget_and_models(make_demo: MakeDemo
     assert health["active_runs"] == 0 and health["queue_length"] == 0
 
 
+async def test_health_labels_a_setup_that_is_not_the_hackathon_platform(
+    make_demo: MakeDemo,
+) -> None:
+    platform = await make_demo()
+    assert (await platform.client.get("/api/health")).json()["platform_note"] is None
+    personal = await make_demo(provider="requesty", executor="docker", allow_dev=True)
+    note = (await personal.client.get("/api/health")).json()["platform_note"]
+    assert note.startswith("Not the hackathon platform")
+    assert "Requesty (personal mode)" in note and "local Docker" in note
+
+
 async def test_samples_are_listed(make_demo: MakeDemo) -> None:
     demo = await make_demo()
     [sample] = (await demo.client.get("/api/samples")).json()

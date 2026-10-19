@@ -263,6 +263,9 @@ components:
         queue_length: { type: integer }
         executor: { type: string, enum: [contree, docker] }
         models: { type: object, additionalProperties: { type: string } }
+        platform_note:
+          type: [string, "null"]
+          description: Set when the service is not on the hackathon platform (personal mode or dev settings).
     Error:
       type: object
       required: [error, message]

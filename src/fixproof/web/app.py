@@ -62,6 +62,7 @@ class Health(BaseModel):
     queue_length: int
     executor: Literal["contree", "docker"]
     models: dict[str, str]
+    platform_note: str | None = None  # set when this is not the hackathon platform
 
 
 class SampleOut(BaseModel):

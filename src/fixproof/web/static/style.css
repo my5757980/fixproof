@@ -31,6 +31,16 @@ a { color: var(--link); }
 .site-header { background: #11161c; color: #f2f5f7; padding: 1.25rem 0 1rem; }
 .site-header h1 { margin: 0 0 0.25rem; color: var(--accent); font-size: 1.9rem; }
 .tagline { margin: 0 0 0.5rem; max-width: 70ch; color: #cfd6de; }
+.platform-note {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-left: 4px solid #f0b429;
+  background: #2a2410;
+  color: #f7e3a3;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  max-width: 70ch;
+}
 .health { margin: 0; font-size: 0.95rem; }
 .health.ok::before { content: "● "; color: var(--accent); }
 .health.paused::before { content: "● "; color: #f0b429; }
@@ -64,7 +74,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 button.secondary { background: #eef1f4; border-color: var(--border); color: var(--text); }
 button.danger { background: var(--bad); border-color: #7a1710; color: #fff; }
 
-.samples { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem; }
+.samples { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 0.75rem; }
 .sample {
   display: flex;
   flex-direction: column;
@@ -158,6 +168,7 @@ input, select, textarea {
 .evidence th { background: #f3f5f8; width: 40%; }
 
 .report-label { font-weight: 700; }
+.report { overflow-wrap: anywhere; }
 .report code, .diff { font-family: var(--mono); }
 .report code { background: #eef1f4; padding: 0 0.25rem; border-radius: 4px; }
 
@@ -171,6 +182,8 @@ input, select, textarea {
   max-height: 28rem;
   min-height: 2.5rem;
 }
+.diff:empty::before { content: "The patch appears when the run ends."; }
+.diff:empty::before, .diff .note { white-space: normal; color: #9aa5b1; }
 .diff .add { color: #7ee787; }
 .diff .del { color: #ff8b8b; }
 .diff .hunk { color: #79c0ff; }
