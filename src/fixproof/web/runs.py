@@ -9,7 +9,8 @@ One ``RunManager`` serves the web app:
 - it returns a random per-run control token once and keeps only its SHA-256, which ``stop``
   requires;
 - it serves finished runs from disk and keeps the newest runs only;
-- it lists the labeled replays of recorded real runs (``replays/index.toml``).
+- it lists the labeled replays of recorded real runs (``replays/index.toml``);
+- with ``FIXPROOF_SHOWCASE=1`` it starts no live runs and offers only those replays.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ from fixproof.wiring import github_source, token_factory_client, web_search_back
 
 KEEP_RUNS = 200
 REPLAY_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
+SHOWCASE_REASON = "This site is a showcase of recorded real runs; it does not start live runs."
 EventCallback = Callable[[EventType, dict[str, Any]], None]
 
 
@@ -722,6 +724,8 @@ class RunManager:
         return replays[0].name if replays else None
 
     def _configuration_problem(self) -> str | None:
+        if self.settings.showcase:
+            return SHOWCASE_REASON
         try:
             self.settings.require_api_key()
             if self.settings.executor == "contree":

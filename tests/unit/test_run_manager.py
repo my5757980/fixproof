@@ -18,6 +18,7 @@ from fixproof.web.runs import (
     RunManager,
     TaskInput,
     VisitorAllowance,
+    load_replays,
 )
 from tests.fakes.calc_repo import ISSUE_URL, REPO_URL
 from tests.fakes.settings import make_settings
@@ -127,6 +128,17 @@ async def test_replay_catalog_loads_from_index(tmp_path: Path) -> None:
     path = manager.replay_path("calc-verified")
     assert path is not None and read_trace(path)
     assert manager.replay_path("missing") is None and manager.replay_path("../etc") is None
+
+
+def test_the_bundled_replays_are_complete_recorded_runs() -> None:
+    replays_dir = Path(__file__).resolve().parents[2] / "replays"
+    entries = load_replays(replays_dir)
+    assert entries
+    for entry in entries:
+        events = read_trace(replays_dir / f"{entry.name}.jsonl")
+        assert events[0].type is EventType.RUN_STARTED
+        assert events[-1].type is EventType.RUN_FINISHED
+        assert events[-1].data["label"] == entry.label
 
 
 async def test_stop_needs_the_control_token_and_works_once(tmp_path: Path) -> None:

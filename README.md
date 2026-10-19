@@ -350,6 +350,7 @@ All settings come from environment variables or `.env` (see `.env.example`).
 | `FIXPROOF_DEMO_MAX_CONCURRENT` | `2` | Demo runs at once |
 | `FIXPROOF_DEMO_RUNS_PER_VISITOR` | `3` | Live runs per visitor per day |
 | `FIXPROOF_DEMO_DAILY_CAP_USD` | `2.0` | Demo spending cap per day |
+| `FIXPROOF_SHOWCASE` | `0` | `1` makes the web demo a showcase: it starts no live runs and offers the labeled replays in `replays/` |
 | `FIXPROOF_DEMO_MAX_REPO_MB` | `50` | Largest repository the demo accepts |
 | `FIXPROOF_SANDBOX_COST_PER_MIN_USD` | `0.0` | Estimated sandbox cost per minute, counted in the demo budget |
 | `FIXPROOF_DEMO_URL` | (none) | Public demo URL, for the daily uptime check (a GitHub Actions variable) |

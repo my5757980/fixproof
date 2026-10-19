@@ -191,6 +191,7 @@ class Settings(BaseSettings):
         default=0.0, ge=0.0, validation_alias="FIXPROOF_SANDBOX_COST_PER_MIN_USD"
     )
     demo_url: str | None = Field(default=None, validation_alias="FIXPROOF_DEMO_URL")
+    showcase: bool = Field(default=False, validation_alias="FIXPROOF_SHOWCASE")
 
     @model_validator(mode="after")
     def _apply_provider_defaults(self) -> Settings:

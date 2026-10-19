@@ -1,10 +1,24 @@
 # Labeled replays of real recorded runs (FR-018). The demo offers them when live runs are not
-# available (visitor limit, daily budget, or a configuration problem), and every replayed event
-# carries replay=true. Each entry needs replays/<name>.jsonl, recorded from a real Nebius run
-# (tasks.md T064) and checked for secrets before it is committed. Example entry:
-#
-# [[replays]]
-# name = "flask-empty-blueprint-name"
-# title = "Flask: an empty Blueprint name should raise ValueError"
-# label = "verified"
-# recorded_at = "2026-10-20T10:00:00Z"
+# available (visitor limit, daily budget, a configuration problem, or FIXPROOF_SHOWCASE=1), and
+# every replayed event carries replay=true. Each entry needs replays/<name>.jsonl, copied
+# unchanged from a real run's trace.jsonl and checked for secrets and local paths before it is
+# committed. A run outside the hackathon platform says so in its title, and its report carries
+# the platform note.
+
+[[replays]]
+name = "flask-empty-blueprint-name"
+title = "Flask: an empty Blueprint name should raise ValueError (personal mode)"
+label = "verified"
+recorded_at = "2026-10-18T08:13:08Z"
+
+[[replays]]
+name = "requests-invalid-url-label"
+title = "Requests: http://.example.com raises UnicodeError instead of InvalidURL (personal mode)"
+label = "verified"
+recorded_at = "2026-10-19T05:17:51Z"
+
+[[replays]]
+name = "requests-get-content-length"
+title = "Requests: GET requests always send a Content-Length header (personal mode)"
+label = "verified"
+recorded_at = "2026-10-17T10:16:49Z"

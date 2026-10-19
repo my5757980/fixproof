@@ -238,6 +238,15 @@ async def test_health_labels_a_setup_that_is_not_the_hackathon_platform(
     assert "Requesty (personal mode)" in note and "local Docker" in note
 
 
+async def test_a_showcase_starts_no_live_runs(make_demo: MakeDemo) -> None:
+    demo = await make_demo(showcase=True)
+    health = (await demo.client.get("/api/health")).json()
+    assert health["live_runs_available"] is False and "showcase" in health["reason"]
+    response = await demo.client.post("/api/runs", json={"sample_id": SAMPLE.id})
+    assert response.status_code == 503 and response.json()["error"] == "live_paused"
+    assert demo.manager.runs() == []
+
+
 async def test_samples_are_listed(make_demo: MakeDemo) -> None:
     demo = await make_demo()
     [sample] = (await demo.client.get("/api/samples")).json()
