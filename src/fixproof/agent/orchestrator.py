@@ -558,24 +558,30 @@ class Orchestrator:
         message = prompts.reproduce_message(task, self._plan, self._paths, evidence)
         for _ in range(self._max_repro_checks):
             result = await worker.run(message, max_turns=self._max_repro_turns)
-            if result.status is WorkerStatus.INVALID_TOOL_CALLS:
-                self._fail(
-                    StopReason.INVALID_TOOL_CALLS,
-                    "worker",
-                    "The model made 3 invalid tool calls in a row.",
-                )
-                return
-            if result.status is WorkerStatus.MAX_TURNS:
+            if result.status in (WorkerStatus.INVALID_TOOL_CALLS, WorkerStatus.MAX_TURNS):
+                # The harness decides, not the model: a test the worker wrote that fails before
+                # the fix is the reproduction even when the worker never called finish.
+                check = await self._check_reproduction(context)
+                if check.test_id is not None:
+                    self._error(
+                        "reproduce",
+                        f"The worker stopped without calling finish; its test {check.test_id} "
+                        "fails before the fix, so it is the reproduction.",
+                    )
+                    await self._accept_reproduction(context)
+                    return
+                if result.status is WorkerStatus.INVALID_TOOL_CALLS:
+                    self._fail(
+                        StopReason.INVALID_TOOL_CALLS,
+                        "worker",
+                        "The model made 3 invalid tool calls in a row.",
+                    )
+                    return
                 break
             self._last_finish = result.finish
             check = await self._check_reproduction(context)
             if check.test_id is not None:
-                created = sorted(p for p in context.created_files if _is_test_module(p))
-                self._repro_files = {
-                    p: await self._executor.read_file(context.snapshot, p) for p in created
-                }
-                self._repro = await self._key_snapshot(context.snapshot, "repro")
-                context.snapshot = self._repro
+                await self._accept_reproduction(context)
                 return
             message = prompts.reproduction_feedback(check.reason)
         self.bus.publish(
@@ -587,6 +593,15 @@ class Orchestrator:
             "reproduce",
             "The agent could not write a test that fails before the fix.",
         )
+
+    async def _accept_reproduction(self, context: ToolContext) -> None:
+        """Keep the reproduction test files and tag the snapshot the fix phase starts from."""
+        created = sorted(p for p in context.created_files if _is_test_module(p))
+        self._repro_files = {
+            p: await self._executor.read_file(context.snapshot, p) for p in created
+        }
+        self._repro = await self._key_snapshot(context.snapshot, "repro")
+        context.snapshot = self._repro
 
     async def _check_reproduction(self, context: ToolContext) -> _ReproductionCheck:
         """Run the worker's new test files; the first failing test becomes the reproduction."""

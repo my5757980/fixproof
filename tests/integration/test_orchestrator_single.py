@@ -198,6 +198,33 @@ async def test_e_bug_that_cannot_be_reproduced(tmp_runs_dir: Path) -> None:
     assert load_report(s).stop_reason is StopReason.NOT_REPRODUCIBLE
 
 
+async def test_e2_a_failing_test_counts_even_without_finish(tmp_runs_dir: Path) -> None:
+    """A real run wrote a failing reproduction test, then ran out of turns without finish."""
+    wander = [reply_tool("read_file", path="calc/core.py") for _ in range(2)]
+    s = make_scenario(
+        tmp_runs_dir,
+        worker=[create_file_reply(REPRO_PATH, REPRO_TEST), *wander, *fix_replies()],
+        max_repro_turns=3,
+    )
+    run = await s.run()
+
+    assert run.label is OutcomeLabel.VERIFIED
+    statuses = [e for e in s.events(EventType.REPRO_STATUS) if e.data["fails_before"]]
+    assert statuses and statuses[0].data["repro_test_id"].startswith(REPRO_PATH)
+    messages = [e.data["message"] for e in s.events(EventType.ERROR)]
+    assert any("without calling finish" in message for message in messages)
+
+
+async def test_e3_no_failing_test_and_no_finish_is_still_not_reproducible(
+    tmp_runs_dir: Path,
+) -> None:
+    wander = [reply_tool("read_file", path="calc/core.py") for _ in range(3)]
+    s = make_scenario(tmp_runs_dir, worker=wander, max_repro_turns=3)
+    run = await s.run()
+
+    assert run.stop_reason is StopReason.NOT_REPRODUCIBLE
+
+
 async def test_f_install_failing_twice_is_setup_failed(tmp_runs_dir: Path) -> None:
     executor = FakeExecutor()
     executor.install_ok = False
