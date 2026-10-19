@@ -31,3 +31,6 @@ Thumbs.db
 
 # Static showcase output (fixproof showcase site)
 site/
+
+# Demo videos, thumbnail, and the LinkedIn post text (large local files)
+media/
