@@ -256,6 +256,15 @@ def test_replay_of_a_missing_file_exits_2(tmp_path: Path) -> None:
     assert result.exit_code == 2
 
 
+def test_showcase_writes_a_static_site_and_keeps_existing_files(tmp_path: Path) -> None:
+    replays = Path(__file__).resolve().parents[2] / "replays"
+    result = invoke("showcase", str(tmp_path / "site"), "--replays", str(replays))
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "site" / "index.html").is_file() and "Static showcase" in result.stdout
+    again = invoke("showcase", str(tmp_path / "site"), "--replays", str(replays))
+    assert again.exit_code == 2 and "not empty" in again.output
+
+
 def test_version() -> None:
     result = invoke("--version")
     assert result.exit_code == 0 and result.stdout.startswith("fixproof ")

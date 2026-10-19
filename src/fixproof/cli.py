@@ -1,4 +1,4 @@
-"""Command-line interface (contracts/cli.md): fix, replay, doctor, serve, apply, and pr.
+"""Command-line interface (contracts/cli.md): fix, replay, doctor, serve, showcase, apply, and pr.
 
 ``fix`` prints the plan before any edit and then one line per event. Ctrl+C stops the run
 within 10 seconds and still writes the partial report (exit code 30). ``apply`` and ``pr`` always
@@ -406,6 +406,28 @@ def serve(
             "DEV ONLY: FIXPROOF_ALLOW_DEV=1 is set; never use it for the public demo.", markup=False
         )
     uvicorn.run(web_app, host=host, port=port)
+
+
+@app.command()
+def showcase(
+    out_dir: Annotated[Path, typer.Argument(help="A new or empty folder for the static site.")],
+    replays_dir: Annotated[
+        Path, typer.Option("--replays", help="Replay catalog with index.toml.")
+    ] = Path("replays"),
+) -> None:
+    """Write a static showcase: the web UI playing the labeled replays, with no server."""
+    # Imported here so that the other commands do not pay for loading the web stack.
+    from fixproof.web.showcase import build_showcase
+
+    try:
+        files = asyncio.run(build_showcase(out_dir, replays_dir))
+    except (ConfigError, ValueError) as exc:
+        _fail(str(exc), EXIT_INVALID_INPUT)
+    Console(soft_wrap=True, highlight=False).print(
+        f"Static showcase written to {out_dir} ({len(files)} files). Upload them to a static "
+        "host, for example a Hugging Face Static Space.",
+        markup=False,
+    )
 
 
 @app.command()

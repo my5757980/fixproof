@@ -28,3 +28,6 @@ bench/results/**/raw/
 Thumbs.db
 .vscode/
 .idea/
+
+# Static showcase output (fixproof showcase site)
+site/

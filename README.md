@@ -226,6 +226,7 @@ fixproof bench   run [--tasks FILE] [--only IDS] [--parallel N] [--compare-singl
 fixproof bench   report RESULTS_DIR [--json]
 fixproof doctor  [--json]                         # check configuration and access
 fixproof serve   [--host HOST] [--port PORT]      # start the web demo
+fixproof showcase OUT_DIR [--replays DIR]         # static showcase site that plays the replays
 ```
 
 `fix` prints the plan first, then one line per step (tool calls with their purpose, test runs,
@@ -305,10 +306,17 @@ tool that found nothing in single files, and runs ended by a short connection dr
 
 ## Judge demo
 
-**URL**: not deployed. The public demo runs only on the hackathon platform (Hugging Face
-Spaces with the `Dockerfile`, Nebius Token Factory, and Token Factory Sandboxes), which was not
-available (see the status at the top). In personal mode, the same web UI runs on your own
-computer (step 5 of [Personal mode](#personal-mode-without-the-hackathon-platform)).
+**Live demo**: not deployed. The public live demo runs only on the hackathon platform (the
+`Dockerfile` with Nebius Token Factory and Token Factory Sandboxes), which was not available (see
+the status at the top). In personal mode, the same web UI runs on your own computer (step 5 of
+[Personal mode](#personal-mode-without-the-hackathon-platform)).
+
+**Showcase**: <https://huggingface.co/spaces/ms5373268/fixproof>, a Hugging Face Static Space
+with the same web UI and three real verified runs from personal mode, replayed in the browser
+and labeled REPLAY. It starts no live runs, needs no server and no keys, and runs nothing from
+a repository. To rebuild it, run `uv run fixproof showcase site` and upload the files in `site/`
+to the Space. The `Dockerfile` with `FIXPROOF_SHOWCASE=1` serves the same showcase from a
+server.
 
 The demo offers one-click sample tasks and accepts any public GitHub repository up to 50 MB.
 Runs stream live (plan, tool calls, tests, verification), can be stopped, and end with a report

@@ -17,6 +17,12 @@ const TASK_LABELS = {
   description: ["Bug description", "What goes wrong, and what you expected instead"],
 };
 
+// Static showcase (`fixproof showcase`): no server. The API answers are files next to the page,
+// a showcase starts no live runs, and replays play in the browser with the server's timing.
+const STATIC = document.documentElement.dataset.mode === "static";
+const STATIC_FILES = { "/api/health": "health.json", "/api/samples": "samples.json", "/api/replays": "replays.json" };
+const REPLAY_MAX_GAP_S = 3;
+
 const $ = (id) => document.getElementById(id);
 let source = null;
 let run = null; // { id, replay, finished, evidence: Map }
@@ -29,10 +35,18 @@ function el(tag, text, className) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
+  if (STATIC && !STATIC_FILES[path]) return staticRefusal();
+  const response = await fetch(STATIC ? STATIC_FILES[path] : path, options);
   let body = null;
   try { body = await response.json(); } catch (_) { body = null; }
   return { status: response.status, body };
+}
+
+async function staticRefusal() {
+  // What the server answers when live runs are paused: 503 live_paused with a replay to watch.
+  const [health, replays] = await Promise.all([api("/api/health"), api("/api/replays")]);
+  const first = replays.body && replays.body.length ? replays.body[0].name : null;
+  return { status: 503, body: { error: "live_paused", message: health.body && health.body.reason, replay_suggestion: first } };
 }
 
 function setHidden(id, hidden) { $(id).hidden = hidden; }
@@ -157,6 +171,7 @@ function openRun(runId, url, replay) {
   run.id = runId;
   $("run-title").textContent = replay ? "Recorded run" : "Live run";
   $("run-meta").textContent = runId;
+  if (STATIC) { playRecording(url, run); return; }
   source = new EventSource(url);
   for (const type of EVENT_TYPES) {
     source.addEventListener(type, (message) => handle(JSON.parse(message.data)));
@@ -165,8 +180,26 @@ function openRun(runId, url, replay) {
 }
 
 function openReplay(entry) {
-  openRun(entry.name, `/api/replays/${encodeURIComponent(entry.name)}/events?speed=4`, true);
+  const name = encodeURIComponent(entry.name);
+  openRun(entry.name, STATIC ? `${name}.jsonl` : `/api/replays/${name}/events?speed=4`, true);
   $("run-meta").textContent = `${entry.title} · recorded ${new Date(entry.recorded_at).toLocaleString()}`;
+}
+
+async function playRecording(url, current) {
+  // Like the server's replay: recorded gaps divided by the speed (?speed=1-20, default 4), at most 3 s.
+  const speed = Math.min(Math.max(Number(new URLSearchParams(location.search).get("speed")) || 4, 1), 20);
+  const response = await fetch(url);
+  if (!response.ok) { notice("This recording could not be loaded."); return; }
+  const events = (await response.text()).split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const time = (ts) => Date.parse(String(ts).replace(/(\.\d{3})\d+/, "$1"));
+  let previous = null;
+  for (const event of events) {
+    const gap = previous ? Math.min((time(event.ts) - time(previous.ts)) / 1000 / speed, REPLAY_MAX_GAP_S) : 0;
+    if (gap > 0) await new Promise((resolve) => setTimeout(resolve, gap * 1000));
+    if (run !== current || $("run-panel").hidden) return; // the visitor left this replay
+    handle({ ...event, replay: true });
+    previous = event;
+  }
 }
 
 function notice(text) {

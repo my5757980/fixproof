@@ -17,6 +17,7 @@ machine-readable output where noted.
 | `fixproof bench report` | Summarize results into a Markdown table for the README | `RESULTS_DIR`; `--json` | `0`, `2` |
 | `fixproof doctor` | Check configuration and access: keys present, `/v1/models` contains the configured IDs, sandbox reachable (lists one image), executor type | `--json` | `0` all good, `6` problems found (each with a fix hint) |
 | `fixproof serve` | Start the web demo (Story 2) | `--host 0.0.0.0`; `--port 7860` | `0` |
+| `fixproof showcase` | Write a static showcase site: the web UI playing the labeled replays in the browser, with no server and no live runs | `OUT_DIR` (new or empty); `--replays DIR` (default `replays/`) | `0`, `2` |
 
 ## Behavior guarantees
 
