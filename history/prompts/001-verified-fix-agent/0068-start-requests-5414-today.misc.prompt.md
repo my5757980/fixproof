@@ -40,6 +40,15 @@ The user restarted Claude Code with the setting and said "continue". Claude conf
 setting was on (0.41 GB free, Chrome about 180 MB), started Docker Desktop, and launched
 psf__requests-5414 with `fixproof bench run --only psf__requests-5414 --max-minutes 60`.
 
+That run ended Not verified (not reproducible) after 16.6 min: the worker wrote a test that
+failed before the fix, then kept trying to edit frozen source files and made invalid calls until
+its turns ran out, and the harness only checked the reproduction after `finish`. Claude made the
+harness check the worker's new tests itself when the reproduce phase ends by its turn limit or by
+invalid calls (commit 9a54d8b, with a test that fails on the old code; 450 offline tests pass)
+and ran the task again: **Verified** in 24.5 min at $0, the fresh re-check passed, and the hidden
+reference tests passed (they agree with the label). The README results table and tasks.md T103
+record it.
+
 ## Outcome
 
 - ✅ Impact: no run started into a likely low-memory stop.

@@ -940,14 +940,17 @@ explicitly and always labeled.
   after), full suite 6 passed and 21 failed (the same 21 network tests as at baseline), no
   regressions, no existing test changed, no scratch files; 21 model calls. The free daily limit
   was not shown in the account; 39 Requesty calls that day got no rate-limit error.
-- [ ] T103 Confirm personal mode on more benchmark tasks with `fixproof bench run --only <id>
+- [X] T103 Confirm personal mode on more benchmark tasks with `fixproof bench run --only <id>
   --max-minutes 60` (hidden tests and a fresh re-check). 2026-10-18: pallets__flask-5014 is
   **Verified** (16.1 min, $0, re-check passed, hidden tests pass and agree) after three real-run
   fixes: test reports of large suites were cut by the 64 KB output limit (now compressed and
   printed last), the worker could rewrite its reproduction test while fixing (now frozen), and a
   two-minute connection drop ended a run (the client now waits and tries again).
   psf__requests-5414 stopped at Requesty's free limit (RateLimitError after about 140 calls that
-  day); run it again after the limit resets.
+  day). 2026-10-19: its next run wrote a failing reproduction test but ran out of turns without
+  calling finish and ended as not reproducible; the harness now checks the worker's tests itself
+  in that case. The run after that was **Verified** (24.5 min, $0, re-check passed, hidden tests
+  pass and agree).
 
 ---
 

@@ -290,11 +290,13 @@ budget 40 steps and 60 minutes per run, $0 per run.
 |---|---|---|---|---|---|
 | psf__requests-1142 | `fixproof fix` | Verified | 15.9 min | (not run) | (not run) |
 | pallets__flask-5014 | `fixproof bench run --only ... --max-minutes 60` | Verified | 16.1 min | passed | pass (agrees) |
+| psf__requests-5414 | `fixproof bench run --only ... --max-minutes 60` | Verified | 24.5 min | passed | pass (agrees) |
 
 The other tasks in `bench/tasks.toml` have not been run in personal mode yet (the free tiers
 limit requests per day). Earlier real runs found and fixed problems in FixProof itself: lost
 results for large test suites, a reproduction test the worker could rewrite while fixing, a
-search tool that found nothing in single files, and runs ended by a short connection drop.
+failing reproduction test that did not count because the worker never called `finish`, a search
+tool that found nothing in single files, and runs ended by a short connection drop.
 
 ## Judge demo
 
