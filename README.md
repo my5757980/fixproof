@@ -195,6 +195,11 @@ Requesty, and with local Docker containers instead of Token Factory Sandboxes. T
 4. Run the agent as in the Quickstart. Old revisions may need an older Python
    (`FIXPROOF_BASE_IMAGE=python:3.9`), and a slow computer may need a larger time budget
    (`--max-minutes 60`).
+5. Optional: open the web UI on your own computer with
+   `FIXPROOF_ALLOW_DEV=1 uv run fixproof serve --host 127.0.0.1 --port 7860` and go to
+   <http://127.0.0.1:7860>; the page says that it is not the hackathon platform. It keeps the
+   demo limits (30 steps and 10 minutes per run), so on a slow computer use the CLI for long
+   runs. Never set `FIXPROOF_ALLOW_DEV` on a public server.
 
 | `FIXPROOF_PROVIDER` | Key | Endpoint | Planner, worker, fallback | Cost |
 |---|---|---|---|---|
@@ -300,8 +305,10 @@ tool that found nothing in single files, and runs ended by a short connection dr
 
 ## Judge demo
 
-**URL**: pending deployment (Hugging Face Spaces, Docker). The first page load after a quiet
-period can take about a minute while the Space wakes up.
+**URL**: not deployed. The public demo runs only on the hackathon platform (Hugging Face
+Spaces with the `Dockerfile`, Nebius Token Factory, and Token Factory Sandboxes), which was not
+available (see the status at the top). In personal mode, the same web UI runs on your own
+computer (step 5 of [Personal mode](#personal-mode-without-the-hackathon-platform)).
 
 The demo offers one-click sample tasks and accepts any public GitHub repository up to 50 MB.
 Runs stream live (plan, tool calls, tests, verification), can be stopped, and end with a report
