@@ -42,7 +42,10 @@ Creating a **public** repository was blocked by the auto mode classifier ("Creat
 Surface"), so Claude created **https://github.com/my5757980/fixproof** as a **private**
 repository instead, recorded the URL in the README Quickstart and the status in tasks.md T009
 (open until the owner makes the repository public), and pushed the full local history: `main`
-(the default branch) and `001-verified-fix-agent`, both at the same commit.
+and `001-verified-fix-agent`, both at the same commit. The first push of `main` timed out
+(HTTP 408) while uploading the whole history, so `001-verified-fix-agent` arrived first and
+GitHub made it the default branch; `main` followed without new data. The owner can switch the
+default to `main` in Settings → General → Default branch (no available tool changes it).
 
 ## Outcome
 
